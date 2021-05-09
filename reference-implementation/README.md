@@ -1,0 +1,1 @@
+This folder contains a partial implementation of the Opus encoder that I made to help me understand the Opus specification.
