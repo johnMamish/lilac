@@ -173,6 +173,78 @@ f0 = 0b11110_0_00
    TOC<1:0> frame_count_code = 0
    There is 1 frame in this packet.
 
+###### Range coded data
+
+
+5f
+    Initialize:
+        b0  = 0x5f
+        rng = 0x0000_0080   val = 0x0000_0050
+
+48
+    Renormalize:
+        Each step of renormalization stretches the range by a factor of 256 and adds 8 bits of
+        precision to the value. The shenanigans with using the lsbit of the previous byte as the
+        msbit for the current byte are because we need rng to start at 0x80, not 0x1_00.
+        rng = 0x0000_8000   val = 0x0000_0050   sym = ((0x5f & 0x01) << 7) | (0x48 >> 1) = 0xa4
+        rng = 0x0000_8000   val = ((val << 8) + (255 - sym)) & 0x7fff_ffff = 0x0000_505b
+        ----
+95
+        rng = 0x0080_0000   val = 0x0000_505b   sym = ((0x48 & 0x01) << 7) | (0x95 >> 1) = 0x4a
+        rng = 0x0080_0000   val = 0x0050_5bb5
+        ----
+5a
+        We still need to go through 1 more round of renormalization because rng has to be GREATER
+        THAN 2**23, not just greater than or equal to.
+        rng = 0x8000_0000   val = 0x0050_5bb5   sym = ((0x95 & 0x01) << 7) | (0x5a >> 1) = 0xad
+        rng = 0x8000_0000   val = 0x505b_b552
+
+    Decode a symbol:
+        first symbol in a CELT frame is 'silence', which has a PDF of {32767, 1} / 32768.
+        fs = ft - min((val / (rng / ft)) + 1, ft)
+           = 0x8000 - min((0x505b_b552 / (0x8000_0000 / 0x8000)) + 1, 0x8000)
+           = 0x8000 - min(0x505b + 1, 0x8000)
+           = 0x8000 - 0x505c = 0x2fa4
+        (Basically all of the time, I think that the first term of the min() will be the smaller
+        one. The min is there just to catch abberrations where val has gone above rng... not sure
+        what would make that happen, but I bet the spec has something to say about it).
+
+        fs = 0x2fa4
+        For 'silence', fl[0] = 0, fh[0] = 32767, fl[1] = 32767, fh[1] = 32768, so the value of k
+        that satisfies fl[k] <= fs < fh[k] is k = 0.
+        Therefore, *Our first symbol is k = 0*.
+
+        After decoding the first symbol, we now need to adjust range and val.
+        val = val - (rng / ft) * (ft - fh[k])
+            = 0x505b_b552 - (0x8000_0000 / 32768) * (32768 - 32767)
+            = 0x505b_b552 - 0x1_0000 * 1
+            = 0x505a_b552
+
+        rng = rng - (rng / ft) * (ft - fh[k])
+            = 0x8000_0000 - 0x1_0000
+            = 0x7fff_0000
+
+    Renormalize:
+        Renormalization not needed because rng > 2**23
+
+    Decode a symbol:
+        Second symbol in CELT is 'post-filter' with PDF {1, 1} / 2
+        fs = 2 - min((0x505a_b552 / (0x7fff_0000 / 2)) + 1, 2)
+        fs = 2 - min(2, 2)
+        fs = 0
+
+        k  = 0
+
+        Adjust val and rng.
+        val = val - (rng / ft) * (ft - fh[k])
+            = 0x505a_b552 - (0x3fff_8000) * (1)
+            = 0xa05b_3552
+
+        rng = val - (rng / ft) * (ft - fh[k])
+            = 0x7fff_0000 - (0x3fff_8000) * (1)
+            = 0x3fff_8000
+
+
 
 5f 48 95 5a 27 38 72
 17 e0 c2 34 30 13 37 82
