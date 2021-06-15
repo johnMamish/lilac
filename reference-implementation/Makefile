@@ -1,2 +1,7 @@
-all: celt_decode_frame.c
-	gcc -std=gnu99 -g celt_decode_frame.c -o celt-decode-frame
+C_SOURCES=
+C_SOURCES+= celt_decode_frame.c
+C_SOURCES+= range_coder.c
+C_SOURCES+= symbol_context.c
+
+all: $(C_SOURCES)
+	gcc -Wall -std=gnu99 -g $(C_SOURCES) -o celt-decode-frame
