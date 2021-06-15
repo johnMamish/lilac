@@ -5,6 +5,7 @@
   * iCE40 UP5K FPGA for Verilog
   * ATSAMD21G18A for C
 
+Also see [opus-annotated](https://github.com/johnMamish/opus-annotated); a lot of the background work for lilac took place as annotation of the Opus reference implementation.
 
 # Features
 ----------------------------------------------------------------
@@ -16,6 +17,7 @@ So that I can get this project off the ground, I'm starting with a very restrict
   * Coding 48ksps sources
   * Mono audio only
   * Full-Bandwidth coding at 64kbps coding rate
+  * intra-frame energy prediction by band (this is necessary for a basic implementation).
 
 ##### Features not implemented in v0.1, but desired for future versions
   * CELT-based NB, WB, SWB, and FB encoding
