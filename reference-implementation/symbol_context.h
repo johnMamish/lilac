@@ -2,6 +2,7 @@
 #define _SYMBOL_CONTEXT_H
 
 #include <stdint.h>
+#include "frame_context.h"
 
 /**
  * Struct describing PDF of a symbol. For instance the symbol 'silence' in the CELT range encoding
@@ -88,7 +89,7 @@ const extern symbol_context_t CELT_coarse_energy_context;
  *
  * @return A new symbol context that
  */
-symbol_context_t* symbol_context_create_from_laplace(uint32_t LM, uint32_t intra, uint32_t band_number);
+symbol_context_t* symbol_context_create_from_laplace(const frame_context_t* context, uint32_t band_number);
 
 /**
  * Frees the given symbol context and any associated storage.

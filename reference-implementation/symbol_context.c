@@ -1,7 +1,20 @@
 #include "symbol_context.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+
+/// Log of the minimum probability of an energy delta
+#define LAPLACE_LOG_MINP (0)
+
+/// The minimum probability of an energy delta (out of 32768).
+#define LAPLACE_MINP (1<<LAPLACE_LOG_MINP)
+
+/**
+ * The minimum number of guaranteed representable coarse energy deltas (in one direction).
+ */
+#define LAPLACE_NMIN (16)
 
 const symbol_context_t CELT_silence_context = {
     .num_symbols = 2,
@@ -35,6 +48,13 @@ const symbol_context_t CELT_intra_context = {
     .fh = ((uint32_t[]) {7, 8})
 };
 
+/**
+ * Parameters of the Laplace-like probability models used for the coarse energy.
+ * There is one pair of parameters for each frame size, prediction type
+ * (inter/intra), and band number.
+ * The first number of each pair is the probability of 0, and the second is the
+ * decay rate, both in Q8 precision.
+ */
 static const uint8_t e_prob_model[4][2][42] = {
    /*120 sample frames.*/
    {
@@ -110,22 +130,83 @@ void print_symbol_context(const symbol_context_t* sym)
     printf("} / %i\n", sym->ft);
 }
 
+/* The minimum probability of an energy delta (out of 32768). */
+#define LAPLACE_LOG_MINP (0)
+#define LAPLACE_MINP (1<<LAPLACE_LOG_MINP)
+/* The minimum number of guaranteed representable energy deltas (in one
+    direction). */
+#define LAPLACE_NMIN (16)
 
-symbol_context_t* symbol_context_create_from_laplace(uint32_t LM, uint32_t intra, uint32_t band_number)
+static const uint32_t q15_1 = (1 << 15);
+static const uint32_t q14_1 = (1 << 14);
+
+symbol_context_t* symbol_context_create_from_laplace(const frame_context_t* context, uint32_t band_number)
 {
     symbol_context_t* sc = calloc(sizeof(*sc), 1);
 
     // e_prob_model is a fixed table containing laplace distribution parameters for coarse energy
     // symbols as described in rfc 6716 section 4.3.2.1.
-    const uint8_t fs = e_prob_model[LM][intra][band_number * 2];
-    const uint8_t decay = e_prob_model[LM][intra][band_number * 2 + 1];
+    int intra = context->intra ? 1 : 0;
+    const uint32_t q15_probability_0 = e_prob_model[context->LM][intra][band_number * 2] << 7;
+    const uint32_t q14_decay = e_prob_model[context->LM][intra][band_number * 2 + 1] << 6;
 
     sc->num_symbols = 0;
     sc->symbol_context_name = malloc(64);
-    snprintf(sc->symbol_context_name, 64, "Lapalce symbol: fs = % 3i; decay = % 3i", fs, decay);
+    snprintf(sc->symbol_context_name, 64, "Laplace symbol: fs = % 5i; decay = % 5i",
+             q15_probability_0, q14_decay);
 
-    // TODO: fill out sc->fl. sc->fh can be derived from sc->fl.
+    // Allocate memory for fl and fh. To simplify code, just allocate way more than we need.
+    sc->ft = (1 << 15);
+    sc->fl = calloc(sizeof(*sc->fl), 32768);
+    sc->fh = calloc(sizeof(*sc->fh), 32768);
 
+    // Fill out probability distribution.
+    uint16_t q15_probability_accum = 0;
+
+    // start with the probability of a 0.
+    q15_probability_accum += q15_probability_0;
+    sc->fh[0] = q15_probability_accum;
+    sc->num_symbols++;
+
+    // initialize q15_probability_val to be the probability of a +/-1 before the start of the loop.
+    const uint32_t q15_tail_probability = LAPLACE_MINP * LAPLACE_NMIN;
+    uint32_t q15_probability_val = (((q15_1 - (2 * q15_tail_probability) - q15_probability_0) *
+                                     (q14_1 - q14_decay)) / 2) >> 14;
+
+    do {
+        // record next 2 values in distribution
+        q15_probability_accum += q15_probability_val + LAPLACE_MINP;
+        sc->fh[sc->num_symbols + 0] = q15_probability_accum;
+        q15_probability_accum += q15_probability_val + LAPLACE_MINP;
+        sc->fh[sc->num_symbols + 1] = q15_probability_accum;
+        sc->num_symbols += 2;
+
+        // advance the probability value to the next symbol.
+        q15_probability_val = (q15_probability_val * q14_decay) >> 14;
+    } while (q15_probability_val >= LAPLACE_MINP);
+
+    // now do some minp buckets
+    while (1) {
+        if ((q15_probability_accum + (2 * LAPLACE_MINP)) > 32768) {
+            break;
+        }
+
+        q15_probability_accum += LAPLACE_MINP;
+        sc->fh[sc->num_symbols + 0] = q15_probability_accum;
+        q15_probability_accum += LAPLACE_MINP;
+        sc->fh[sc->num_symbols + 1] = q15_probability_accum;
+        sc->num_symbols += 2;
+    }
+
+    // fill out fl
+    sc->fl[0] = 0;
+    for (int i = 1; i < sc->num_symbols; i++) {
+        sc->fl[i] = sc->fh[i - 1];
+    }
+
+    assert(sc->num_symbols >= (2 * (LAPLACE_NMIN + 1)) + 1);
+
+    return sc;
 }
 
 

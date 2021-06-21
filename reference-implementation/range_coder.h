@@ -56,17 +56,29 @@ void range_decoder_destroy(range_decoder_t* rd);
 /**
  * Decodes one symbol from the range decoder, renormalizing at the end if necessary.
  *
- * @param[in,out] range_decoder  Range decoder from which the symbol should be decoded. It should
- *                               be normalized before this function runs and will be normalized
- *                               before it returns.
+ * @param[in,out] rd         Range decoder from which the symbol should be decoded. It should
+ *                           be normalized before this function runs and will be normalized
+ *                           before it returns.
  * @param[in]     symbol     Descriptor of symbol that needs to be decoded, mostly describing CDF.
  *
  * @return The symbol index that's decoded. For instance, given a symbol descriptor with a 6-element
  *         CDF, this function will return a value between 0 and 5, inclusive.
  */
-uint32_t range_decoder_decode_symbol(range_decoder_t* range_decoder,
+uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
                                      const symbol_context_t* symbol);
 
+/**
+ *
+ */
 void print_range_decoder_state(const range_decoder_t* s);
+
+/**
+ * Returns the number of bits left in the frame that's being decoded by rd.
+ *
+ * @param[in]     rd         Range decoder whose remaining number of bits we want to check.
+ *
+ * @return The number of bits left to be decoded in rd
+ */
+uint32_t range_decoder_tell_bits(const range_decoder_t* rd);
 
 #endif

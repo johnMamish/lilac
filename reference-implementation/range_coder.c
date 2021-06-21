@@ -101,6 +101,8 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
         rd->rng = rd->rng - (rd->rng / symbol->ft) * (symbol->ft - symbol->fh[k]);
     }
 
+    printf("Decoded symbol: %i\n", k);
+
     range_decoder_renormalize(rd);
 
     return k;
