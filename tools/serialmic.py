@@ -34,43 +34,17 @@ if __name__ == "__main__":
 
     ser = serial.Serial(args.port, args.baud_rate, timeout=0, parity=serial.PARITY_NONE)
 
-    time.sleep(0.02)
-
     p = pyaudio.PyAudio()
-
-    frame = b''
-    for i in range(args.chunk_size):
-        frame += struct.pack('b', int(32 * math.sin(i * (2 * math.pi * 960) / args.fsamp)))
-
-    global t_prev
-    t_prev  = time.perf_counter()
-    def audio_callback(in_data, frame_count, time_info, status):
-        print("audio callback")
-        global t_prev
-        t_now = time.perf_counter()
-        print(f"callback fsamp = {frame_count / (t_now - t_prev)}")
-        t_prev = t_now
-
-        if (ser.in_waiting < frame_count):
-            # If the serial port doesn't have enough data in it, just send some zeros
-            print(f"audio buffering: {ser.in_waiting: 6d} / {frame_count: 6d} bytes ready")
-            return (b'\x00' * frame_count, pyaudio.paContinue)
-        else:
-            data = ser.read(frame_count)
-            print(data.hex())
-            return (data, pyaudio.paContinue)
-
 
     stream = p.open(format=p.get_format_from_width(1, unsigned=False),
                     channels=1,
                     rate=args.fsamp,
                     output=True,
-                    frames_per_buffer=args.chunk_size,
-                    stream_callback=audio_callback)
+                    frames_per_buffer=args.chunk_size)
 
     while (1):
-        time.sleep(0.1)
-        print(f"{ser.in_waiting}")
+        if (ser.inWaiting() > 0):
+            stream.write(ser.read(ser.inWaiting()))
 
     stream.stop_stream()
     stream.close()
