@@ -4,7 +4,14 @@ module serialmic(output    spi_cs,
                  output    uart_tx,
                  output    led,
 
-                 input osc_12m);
+                 input osc_12m,
+
+                 // i2s connection
+                 input     i2s_data,
+                 output    i2s_bck,
+                 output    i2s_lrck,
+
+                 output [5:0] gpio);
     assign spi_cs = 1'b1;
 
     // "resetter" is defined in ../common/util.v
@@ -12,46 +19,36 @@ module serialmic(output    spi_cs,
     resetter r(.clock(osc_12m),
                .reset(reset));
 
-    // "divide_by_n" is defined in ../common/util.v
-    wire baud_clock;
-    divide_by_n #(.N(6)) div(.clk(osc_12m),
-                               .reset(reset),
-                               .out(baud_clock));
+    ////////////////////////////////////////////////
+    // I2S
+    // divide clock by 4 for sample rate of.... 46875. gag.
+    wire [31:0] i2s_data_out_0, i2s_data_out_1;
+    wire data_valid;
+    i2s_controller i2sc(.clock(osc_12m),
+                        .reset(reset),
 
+                        .data_valid(data_valid),
+                        .data_out_0(i2s_data_out_0),
+                        .data_out_1(),
+
+                        .i2s_data(i2s_data),
+                        .bck(i2s_bck),
+                        .lrck(i2s_lrck));
+    defparam i2sc.bits_per_word = 32;
+    defparam i2sc.bck_divisor = 4;
+
+    ////////////////////////////////////////////////
+    // UART
     reg [7:0] data;
-    reg data_valid;
     wire uart_busy;
-    uart_tx ut(.clock(osc_12m),
-               .reset(reset),
-               .baud_clock(baud_clock),
-               .data_valid(data_valid),
-               .data(data),
-               .uart_tx(uart_tx),
-               .uart_busy(uart_busy));
+    uart_tx_kiss ut(.clock(osc_12m),
+                    .reset(reset),
+                    .data_valid(data_valid),
+                    //.data(i2s_data_out_0[31:24]),
+                    .data({i2s_data_out_0[31], i2s_data_out_0[28:22]}),
+                    .uart_tx(uart_tx),
+                    .uart_busy(uart_busy));
+    defparam ut.baud_divisor = 6;
 
-    localparam [7:0] wave_period = 8'd100;
-    localparam [7:0] osc_ticks_per_samp = 8'd250;
-    reg [15:0] osccnt;
-    reg [15:0] wavecnt;
-
-    always @(posedge osc_12m) begin
-        if (reset) begin
-            osccnt <= 'h0;
-            wavecnt <= 'h0;
-        end else begin
-            if (osccnt == (osc_ticks_per_samp - 1)) begin
-                osccnt <= 'h0;
-                data_valid <= 'b1;
-                if (data == (wave_period - 1)) begin
-                    data <= 0;
-                end else begin
-                    data <= data + 1;
-                end
-            end else begin
-                osccnt <= osccnt + 'h1;
-                data_valid <= 'b0;
-                data <= data;
-            end
-        end
-    end
+    assign gpio = {1'bz, data_valid, i2s_lrck, i2s_bck, i2s_data, uart_tx};
 endmodule

@@ -25,7 +25,7 @@ if __name__ == "__main__":
                     help='Path to serial port.')
     ap.add_argument('--baud-rate', dest='baud_rate', action='store', default=2000000,
                     help='Baud rate.')
-    ap.add_argument('--fsamp', dest='fsamp', action='store', default=48000,
+    ap.add_argument('--fsamp', dest='fsamp', type=int, action='store', default=48000,
                     help='Sample frequency.')
     ap.add_argument('--chunk-size', dest='chunk_size', action='store', default=2000,
                     help='Chunk size. Smaller chunk gives lower latency, but more opportunities for tearing.')

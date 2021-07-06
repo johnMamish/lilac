@@ -2,3 +2,16 @@ set_io led 27
 set_io spi_cs 16    # Tie this to high to make sure that the spi flash is disabled.
 set_io uart_tx 14
 set_io osc_12m 20
+
+# i2s connections
+set_io i2s_data   18
+set_io i2s_bck    15
+set_io i2s_lrck   17
+
+# gpio debug
+set_io -nowarn gpio[0] 6
+set_io -nowarn gpio[1] 9
+set_io -nowarn gpio[2] 13
+set_io -nowarn gpio[3] 10
+set_io -nowarn gpio[4] 11
+set_io -nowarn gpio[5] 12

@@ -1,2 +1,2 @@
-read_verilog serialmic.v ../../common/uart.v ../../common/util.v
+read_verilog serialmic.v ../../verilog-common/hdl/uart_kiss.v ../../verilog-common/hdl/util.v ../../verilog-common/hdl/i2s.v
 synth_ice40 -top serialmic -json serialmic.json
