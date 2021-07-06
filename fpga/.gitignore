@@ -1,0 +1,4 @@
+# yosys and nextpnr output files
+*.asc
+*.bin
+*.json

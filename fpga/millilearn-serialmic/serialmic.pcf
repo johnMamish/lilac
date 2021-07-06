@@ -1,0 +1,4 @@
+set_io led 27
+set_io spi_cs 16    # Tie this to high to make sure that the spi flash is disabled.
+set_io uart_tx 14
+set_io osc_12m 20

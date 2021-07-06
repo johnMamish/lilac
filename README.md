@@ -1,4 +1,5 @@
 # lilac: A Little Audio Compressor
+----------------------------------------------------------------
 `lilac` is a partial implementation of the [Opus lossy audio codec](https://tools.ietf.org/html/rfc6716) specifically targeted at low-power embedded systems. `lilac` comprises both a partial c implementation and a partial verilog implementation of Opus. `lilac` is capable of coding full-bandwidth audio using the Constrained-Energy Lapped Transform codec.
 
 `lilac` is meant to be retargetable, but until the project is mature, platform specfic code will be used to facilitate development and testing. Default platforms are:
@@ -24,11 +25,18 @@ So that I can get this project off the ground, I'm starting with a very restrict
   * 2.5, 5, 10, and 20ms frame sizes
   * improved transient coding
   * VBR (Variable bit-rate)
-  * Variable time-frequency resolution
   * Inter-frame predictive coding
+  * per-band variable time-frequency resolution
   * pitch pre-filter
+  * stereo or multi-channel audio
 
 ##### Features that aren't planned
-  * per-band variable time-frequency resolution
   * SILK-based encoding
-  * stereo or multi-channel audio
+
+# Directories
+----------------------------------------------------------------
+  * fpga
+  Each subdirectory in `fpga` contains a different synthesizable and deployable demo project.
+
+  * rtl
+  This directory contains the core rtl for lilac.
