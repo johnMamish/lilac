@@ -7,19 +7,12 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "bit_allocation.h"
+//#include "bit_allocation.h"
 #include "range_coder.h"
 #include "symbol_context.h"
 
 #define ARRAY_NUMEL(arr) (sizeof(arr) / (sizeof(arr[0])))
 
-
-const symbol_context_t* symbols_to_decode[] = {
-    &CELT_silence_context,
-    &CELT_post_filter_context,
-    &CELT_transient_context,
-    &CELT_intra_context,
-};
 
 #if 0
 uint8_t frame[] =
@@ -138,10 +131,17 @@ int main(int argc, char** argv)
     range_decoder_t* range_decoder = range_decoder_create(frame + 1, sizeof(frame) - 1);
 
     // Initialize frame context info.
+    // TODO: should just have a single function that consumes most of the symbols right at the start
+    // and generates a frame_context_t.
+    // This will by necessity exclude spread_decision, band boosts, trim, anti_collapse, and skip,
+    // which would probably be more appropriate in a different structure anyways.
     frame_context_t context;
     uint8_t toc = frame[0];
     context.LM = (toc >> 3) & 0x03;
     context.C = 1;
+
+    frame_context_initialize_band_boundaries(&context);
+    frame_context_initialize_caps(&context);
 
     // Decode 'static' symbols for frame context
     context.silence = range_decoder_decode_symbol(range_decoder, &CELT_silence_context); printf("\n");
@@ -158,6 +158,11 @@ int main(int argc, char** argv)
     float energy[21];
     coarse_energy_symbols_decode(&context, range_decoder, coarse);
     coarse_energy_calculate_from_symbols(&context, coarse, energy, NULL);
+
+    context.spread_decision = range_decoder_decode_symbol(range_decoder, &CELT_spread_context); printf("\n");
+
+    // Calculate band boosts
+
 
     // Figure out bit allocation for fine energy and PVQ
 
@@ -214,4 +219,50 @@ void coarse_energy_calculate_from_symbols(const frame_context_t* context, const 
         prediction = out[i] - beta * ((float)symbols[i]);
         printf("[unquant_coarse_energy] band %i: decoded residual: %i, decoded energy: %f\n", i, symbols[i], out[i]);
     }
+}
+
+/**
+ *
+ */
+void decode_band_boosts(const frame_context_t* context, range_decoder_t* rd, int32_t* out)
+{
+    for (int i = 0; i < 21; i++) {
+        int width = context->band_boundaries[i + 1] - context->band_boundaries[i];
+
+
+    }
+
+#if 0
+    // 'i' is the band index here.
+    for (i=start;i<end;i++)
+    {
+        int width, quanta;
+        int dynalloc_loop_logp;
+        int boost;
+        width = C*(eBands[i+1]-eBands[i])<<LM;
+
+
+        // quanta is 6 bits, but no more than 1 bit/sample and no less than 1/8 bit/sample
+        // 'quanta' refers to the number of bits that get added per boost.
+        quanta = IMIN(width<<BITRES, IMAX(6<<BITRES, width));
+        dynalloc_loop_logp = dynalloc_logp;
+        boost = 0;
+        while (tell+(dynalloc_loop_logp<<BITRES) < total_bits && boost < cap[i])
+        {
+            int flag;
+            flag = ec_dec_bit_logp(dec, dynalloc_loop_logp);
+            tell = ec_tell_frac(dec);   //// <<<<
+            if (!flag)
+                break;
+            boost += quanta;
+            total_bits -= quanta;       //// <<<<
+            dynalloc_loop_logp = 1;
+        }
+        offsets[i] = boost;            //// <<<<
+
+        // Making dynalloc more likely
+        if (boost>0)
+            dynalloc_logp = IMAX(2, dynalloc_logp-1);
+    }
+#endif
 }

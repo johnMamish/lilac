@@ -48,6 +48,16 @@ const symbol_context_t CELT_intra_context = {
     .fh = ((uint32_t[]) {7, 8})
 };
 
+const symbol_context_t CELT_spread_context = {
+    .num_symbols = 4,
+    .symbol_context_name = "spread decision symbol",
+    .ft = 32,
+
+    // 7, 2, 21, 2
+    .fl = ((uint32_t[]) {0, 7, 9, 30}),
+    .fh = ((uint32_t[]) {7, 9, 30, 32})
+};
+
 /**
  * Parameters of the Laplace-like probability models used for the coarse energy.
  * There is one pair of parameters for each frame size, prediction type

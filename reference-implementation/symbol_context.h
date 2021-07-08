@@ -37,6 +37,7 @@ const extern symbol_context_t CELT_silence_context;
 const extern symbol_context_t CELT_post_filter_context;
 const extern symbol_context_t CELT_transient_context;
 const extern symbol_context_t CELT_intra_context;
+const extern symbol_context_t CELT_spread_context;
 
 /**
  * This symbol tells the amount of energy in each band on a coarse level.

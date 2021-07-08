@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "celt_defines.h"
+
 /**
  * On a per-frame basis, contains basic info about frames.
  *
@@ -32,6 +34,41 @@ typedef struct frame_context {
     /// Is this frame an intra frame (one that depends on previous frames for decoding)? See
     /// RFC6716 section 4.3.2.1.
     bool intra;
+
+    /// Determines whether the decoded vector needs to be rotated. See RFC6716 section 4.3.4.3.
+    int spread_decision;
+
+    /// Holds the maximum bits per sample that can be allocated on a channel-by-channel basis.
+    uint8_t cap[NBANDS];
+
+    /// Contains the start and stop MDCT buckets for each of the pseudo-Bark critical bands.
+    /// The values in eBands are determined by LM (which is determined by the number of samples in
+    /// the frame) as well as by whether it's a short or long frame.
+    /// e.g. band_boundaries[3] holds the MDCT bucket where the 3rd band starts.
+    int band_boundaries[NBANDS];
 } frame_context_t;
+
+/**
+ * Initializes fc->band_boundaries, an array holding the coefficient indicies of the start of each
+ * band.
+ *
+ * Check out celt/modes.c:compute_ebands()
+ *
+ * @param[in,out] fc      frame_context_t whose band boundaries should be initialized. fc->LM and fc->C
+ *                        must already be filled out; fc->band_boundaries will be populated according
+ *                        to these values.
+ */
+void frame_context_initialize_band_boundaries(frame_context_t* fc);
+
+/**
+ * Initializes fc->caps, an array holding per-band maximum bits per sample.
+ *
+ * Check out celt/celt.c:init_caps()
+ *
+ * @param[in,out] fc      frame_context_t whose capacities should be initialized. fc->LM, fc->C, and
+ *                        fc->band_boundaries must already be filled out; fc->caps will be populated
+ *                        according to these values.
+ */
+void frame_context_intialize_caps(frame_context_t* fc);
 
 #endif
