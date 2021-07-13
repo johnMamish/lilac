@@ -69,6 +69,6 @@ void frame_context_initialize_band_boundaries(frame_context_t* fc);
  *                        fc->band_boundaries must already be filled out; fc->caps will be populated
  *                        according to these values.
  */
-void frame_context_intialize_caps(frame_context_t* fc);
+void frame_context_initialize_caps(frame_context_t* fc);
 
 #endif

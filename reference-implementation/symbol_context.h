@@ -38,6 +38,7 @@ const extern symbol_context_t CELT_post_filter_context;
 const extern symbol_context_t CELT_transient_context;
 const extern symbol_context_t CELT_intra_context;
 const extern symbol_context_t CELT_spread_context;
+const extern symbol_context_t CELT_trim_context;
 
 /**
  * This symbol tells the amount of energy in each band on a coarse level.
@@ -61,8 +62,6 @@ const extern symbol_context_t CELT_coarse_energy_context;
 
 // dyn. alloc.
 
-// alloc. trim
-
 // skip
 
 // intensity
@@ -77,6 +76,30 @@ const extern symbol_context_t CELT_coarse_energy_context;
 
 // finalize
 
+/**
+ * Creates an empty symbol context with the specified number of symbols. This function doesn't fill
+ * out fl and fh to have valid values; the caller needs to do that.
+ *
+ * @param[in]     num_symbols  Number of symbols to allocate space for in the returned context.
+ * @param[in]     ft           Range of values which can code the symbol - the denominator of the
+ *                             symbol's CDF.
+ * @param[in]     name         Name of the returned symbol context.
+ *
+ * @return A new symbol context; should be destroyed with symbol_context_destroy() when done.
+ */
+symbol_context_t* symbol_context_create(uint32_t num_symbols, uint32_t ft, const char* name);
+
+/**
+ * Returns a new symbol context which has 2 decodable symbols:
+ *     P(0) - (2^n - 1) / (2^n)
+ *     P(1) -        1  / (2^n)
+ *
+ * @param[in]     logp        log2 of the number of 'buckets' in the CDF that will be returned. For
+ *                            instance, logp = 8 will give a CDF of {255, 1} / 256.
+ *
+ * @return A new symbol context with a CDF as described above.
+ */
+symbol_context_t* symbol_context_create_minprob_1(uint32_t logp, const char* name);
 
 /**
  * Creates a symbol context from the laplace distribution given a frame size, whether it's

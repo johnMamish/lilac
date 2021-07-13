@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <string.h>
 
 /// Log of the minimum probability of an energy delta
 #define LAPLACE_LOG_MINP (0)
@@ -57,6 +57,44 @@ const symbol_context_t CELT_spread_context = {
     .fl = ((uint32_t[]) {0, 7, 9, 30}),
     .fh = ((uint32_t[]) {7, 9, 30, 32})
 };
+
+const symbol_context_t CELT_trim_context = {
+    .num_symbols = 11,
+    .symbol_context_name = "allocation trim symbol",
+    .ft = 128,
+
+    //                   2,  2,  5, 10, 22, 46, 22, 10,  5,  2,  2
+    .fl = ((uint32_t[]) {0,  2,  4,  9, 19, 41, 87,109,119,124,126}),
+    .fh = ((uint32_t[]) {2,  4,  9, 19, 41, 87,109,119,124,126,128}),
+};
+
+symbol_context_t* symbol_context_create(uint32_t num_symbols, uint32_t ft, const char* name)
+{
+    symbol_context_t* sc = calloc(1, sizeof(symbol_context_t));
+
+    sc->num_symbols = num_symbols;
+    sc->ft = ft;
+    sc->symbol_context_name = strndup(name, 1024);
+
+    sc->fl = calloc(num_symbols, sizeof(*sc->fl));
+    sc->fh = calloc(num_symbols, sizeof(*sc->fh));
+
+    return sc;
+}
+
+symbol_context_t* symbol_context_create_minprob_1(uint32_t logp, const char* name)
+{
+    uint32_t ft = (1 << logp);
+
+    symbol_context_t* sc = symbol_context_create(2, ft, name);
+
+    sc->fl[0] = 0;
+    sc->fl[1] = ft - 1;
+    sc->fh[0] = ft - 1;
+    sc->fh[1] = ft;
+
+    return sc;
+}
 
 /**
  * Parameters of the Laplace-like probability models used for the coarse energy.

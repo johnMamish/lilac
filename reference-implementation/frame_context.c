@@ -39,7 +39,7 @@ static const int band_boundaries_2500us[] = {
 
 void frame_context_initialize_band_boundaries(frame_context_t* fc)
 {
-    for (int i = 0; i < NBANDS; i++) {
+    for (int i = 0; i <= NBANDS; i++) {
         fc->band_boundaries[i] = band_boundaries_2500us[i] << fc->LM;
     }
 }
@@ -47,9 +47,9 @@ void frame_context_initialize_band_boundaries(frame_context_t* fc)
 
 void frame_context_initialize_caps(frame_context_t* fc)
 {
-    const int* lookup = &cache_caps50[NBANDS * ((2 * LM) + C - 1)];
+    const int* lookup = &cache_caps50[NBANDS * ((2 * fc->LM) + fc->C - 1)];
     for (int i = 0; i < NBANDS; i++) {
         int N = fc->band_boundaries[i + 1] - fc->band_boundaries[i];
-        fc->cap[i] = ((lookup[i] + 64) * C * N) >> 2;
+        fc->cap[i] = ((lookup[i] + 64) * fc->C * N) >> 2;
     }
 }
