@@ -2,7 +2,6 @@
 #define _SYMBOL_CONTEXT_H
 
 #include <stdint.h>
-#include "frame_context.h"
 
 /**
  * Struct describing PDF of a symbol. For instance the symbol 'silence' in the CELT range encoding
@@ -32,6 +31,7 @@ typedef struct symbol_context {
     uint32_t* fh;
 } symbol_context_t;
 
+#include "frame_context.h"
 
 const extern symbol_context_t CELT_silence_context;
 const extern symbol_context_t CELT_post_filter_context;

@@ -2,7 +2,11 @@
 
 #include "celt_defines.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 // Taken from celt/static_modes_{fixed,float}.h
+// These are maximums in bits/sample.
 static const int cache_caps50[168] = {
     // 2.5 ms frame
     // mono
@@ -36,8 +40,17 @@ static const int band_boundaries_2500us[] = {
    16,  20,  24,  28,  34,  40,  48,  60,  78,  100
 };
 
-
-void frame_context_initialize_band_boundaries(frame_context_t* fc)
+/**
+ * Initializes fc->band_boundaries, an array holding the coefficient indicies of the start of each
+ * band.
+ *
+ * Check out celt/modes.c:compute_ebands()
+ *
+ * @param[in,out] fc      frame_context_t whose band boundaries should be initialized. fc->LM and fc->C
+ *                        must already be filled out; fc->band_boundaries will be populated according
+ *                        to these values.
+ */
+static void frame_context_initialize_band_boundaries(frame_context_t* fc)
 {
     for (int i = 0; i <= NBANDS; i++) {
         fc->band_boundaries[i] = band_boundaries_2500us[i] << fc->LM;
@@ -45,11 +58,56 @@ void frame_context_initialize_band_boundaries(frame_context_t* fc)
 }
 
 
-void frame_context_initialize_caps(frame_context_t* fc)
+/**
+ * Initializes fc->caps, an array holding per-band maximum bits per sample.
+ *
+ * Check out celt/celt.c:init_caps()
+ *
+ * @param[in,out] fc      frame_context_t whose capacities should be initialized. fc->LM, fc->C, and
+ *                        fc->band_boundaries must already be filled out; fc->caps will be populated
+ *                        according to these values.
+ */
+static void frame_context_initialize_caps(frame_context_t* fc)
 {
     const int* lookup = &cache_caps50[NBANDS * ((2 * fc->LM) + fc->C - 1)];
     for (int i = 0; i < NBANDS; i++) {
         int N = fc->band_boundaries[i + 1] - fc->band_boundaries[i];
         fc->cap[i] = ((lookup[i] + 64) * fc->C * N) >> 2;
     }
+}
+
+frame_context_t* frame_context_create_and_read_basic_info(uint8_t toc, range_decoder_t* rd)
+{
+    frame_context_t* fc = calloc(1, sizeof(frame_context_t));
+
+    fc->LM = (toc >> 3) & 0x03;
+    fc->C = 1;
+
+    frame_context_initialize_band_boundaries(fc);
+    frame_context_initialize_caps(fc);
+
+    // Decode 'static' symbols for frame context
+    fc->silence = range_decoder_decode_symbol(rd, &CELT_silence_context);
+    printf("\n");
+
+    fc->post_filter = range_decoder_decode_symbol(rd, &CELT_post_filter_context);
+    printf("\n");
+
+    if (fc->post_filter) {
+        printf("post-filter specified in frame but not implemented!\n");
+        return NULL;
+    }
+
+    fc->transient = range_decoder_decode_symbol(rd, &CELT_transient_context);
+    printf("\n");
+
+    fc->intra = range_decoder_decode_symbol(rd, &CELT_intra_context);
+    printf("\n");
+
+    return fc;
+}
+
+void frame_context_destroy(frame_context_t* fc)
+{
+    free(fc);
 }

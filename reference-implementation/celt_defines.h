@@ -3,4 +3,8 @@
 
 #define NBANDS 21
 
+/*The resolution of fractional-precision bit usage measurements, i.e.,
+   3 => 1/8th bits.*/
+#define BITRES 3
+
 #endif

@@ -169,6 +169,7 @@ static const uint8_t e_prob_model[4][2][42] = {
 
 void print_symbol_context(const symbol_context_t* sym)
 {
+    return;
     printf("Decoding symbol: %s\n", sym->symbol_context_name);
     printf("PDF: {");
     for (int i = 0; i < sym->num_symbols; i++) {

@@ -4,6 +4,7 @@ C_SOURCES+= range_coder.c
 C_SOURCES+= frame_context.c
 C_SOURCES+= symbol_context.c
 C_SOURCES+= celt_util.c
+C_SOURCES+= bit_allocation.c
 
 all: $(C_SOURCES)
-	gcc -Wall -std=gnu99 -g $(C_SOURCES) -o celt-decode-frame
+	gcc -Wall -std=gnu99 -g $(C_SOURCES) -lm -o celt-decode-frame

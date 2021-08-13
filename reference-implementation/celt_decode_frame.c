@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bit_allocation.h"
 #include "range_coder.h"
 #include "symbol_context.h"
 #include "celt_util.h"
@@ -44,58 +45,33 @@ int main(int argc, char** argv)
         return -1;
     }
 
+    uint8_t toc = frame->data[0];
     range_decoder_t* range_decoder = range_decoder_create(frame->data + 1, frame->length - 1);
 
     // Initialize frame context info.
-    // TODO: should just have a single function that consumes most of the symbols right at the start
-    // and generates a frame_context_t.
-    // This will by necessity exclude spread_decision, band boosts, trim, anti_collapse, and skip,
-    // which would probably be more appropriate in a different structure anyways.
-    frame_context_t context;
-    uint8_t toc = frame->data[0];
-    context.LM = (toc >> 3) & 0x03;
-    context.C = 1;
-
-    frame_context_initialize_band_boundaries(&context);
-    frame_context_initialize_caps(&context);
-
-    // Decode 'static' symbols for frame context
-    context.silence = range_decoder_decode_symbol(range_decoder, &CELT_silence_context); printf("\n");
-    context.post_filter = range_decoder_decode_symbol(range_decoder, &CELT_post_filter_context); printf("\n");
-    if (context.post_filter) {
-        printf("post-filter specified in frame but not implemented!\n");
+    frame_context_t* context;
+    if ((context = frame_context_create_and_read_basic_info(toc, range_decoder)) == NULL) {
         return -1;
     }
-    context.transient = range_decoder_decode_symbol(range_decoder, &CELT_transient_context); printf("\n");
-    context.intra = range_decoder_decode_symbol(range_decoder, &CELT_intra_context); printf("\n");
 
     // Decode coarse energy
     int32_t coarse[21];
     float energy[21];
-    coarse_energy_symbols_decode(&context, range_decoder, coarse);
-    coarse_energy_calculate_from_symbols(&context, coarse, energy, NULL);
+    coarse_energy_symbols_decode(context, range_decoder, coarse);
+    coarse_energy_calculate_from_symbols(context, coarse, energy, NULL);
 
-    // tf_change, tf_select!
+    // tf_change, tf_select
     int32_t tf_changes[21];
-    decode_tf_changes(&context, range_decoder, tf_changes); printf("\n");
+    decode_tf_changes(context, range_decoder, tf_changes); printf("\n");
     printf("tf_changes: {");
     for (int i = 0; i < 21; printf("% 3i,", tf_changes[i++]));
     printf("}\n");
 
-    context.spread_decision = range_decoder_decode_symbol(range_decoder, &CELT_spread_context); printf("\n");
-
-    // Calculate band boosts
-    int32_t* boosts = calloc(21, sizeof(int32_t));
-    decode_band_boosts(&context, range_decoder, boosts);
-    int32_t trim = range_decoder_decode_symbol(range_decoder, &CELT_trim_context); printf("\n");
-
-    printf("boosts: {");
-    for (int i = 0; i < 21; printf("% 3i,", boosts[i++]));
-    printf("}\n");
-    printf("allocation trim: % 2i\n", trim);
+    int spread_decision = range_decoder_decode_symbol(range_decoder, &CELT_spread_context); printf("\n");
+    printf("spread: %i\n", spread_decision);
 
     // Figure out bit allocation for fine energy and PVQ
-
+    bit_allocation_description_t* bits = bit_allocation_create(context, range_decoder);
 
     range_decoder_destroy(range_decoder);
 
@@ -187,36 +163,6 @@ void coarse_energy_calculate_from_symbols(const frame_context_t* context, const 
 }
 
 /**
- * Returns
- */
-static int get_band_boost_quanta(int width) {
-    int quanta = 8 * width;
-    if (quanta >= (6 << 3)) quanta = (6 << 3);
-    if (quanta <= width) quanta = width;
-
-    return quanta;
-}
-
-/**
- * Given a symbol_context_t which decodes
- *     '0' with probability 2^n - 1 / 2^n
- *     '1' with probability       1 / 2^n
- *
- * This function will modify the symbol so that the 1 becomes twice as likely, i.e. 'n' in the
- * above CDF will be divided by 2.
- *
- * e.g. {31, 1} / 32 becomes {15, 1} / 16
- */
-static void double_1_probability(symbol_context_t* sym) {
-    sym->ft /= 2;
-
-    sym->fl[0] /= 2;
-    sym->fl[1] /= 2;
-    sym->fh[0] /= 2;
-    sym->fh[1] /= 2;
-}
-
-/**
  * Given a range decoder whose read head is pointing at the point in the bitstream where tf_change
  * and tf_select are encoded, this function decodes tf_change and tf_select and advances the range
  * decoder.
@@ -277,50 +223,4 @@ void decode_tf_changes(const frame_context_t* context, range_decoder_t* rd, int3
 
     symbol_context_destroy(initial_tf_change_context);
     symbol_context_destroy(next_tf_change_context);
-}
-
-/**
- * Given a range decoder whose read head is pointing at band boosts as described in RFC6716 section
- * 4.3.3, this function decodes the band boosts and advances the range decoder.
- *
- * @param[in]     context    frame_context holding some basic info about the frame; all of its
- *                           fields must be filled out properly for this function to operate.
- * @param[in,out] rd         range_decoder whose bitstream shall be read to decode band boosts.
- * @param[out]    boosts     Should point to an array of 21 int32_t. After this function executes,
- *                           the ith element of 'boosts' will hold the amount of band boost in
- *                           1/8th bits for band i.
- */
-void decode_band_boosts(const frame_context_t* context, range_decoder_t* rd, int32_t* boosts)
-{
-    symbol_context_t* initial_boost_context = symbol_context_create_minprob_1(6, "initial boost");
-    symbol_context_t* subsequent_boost_context = symbol_context_create_minprob_1(1, "subsequent boost");
-
-    for (int i = 0; i < 21; i++) {
-        int width = context->C * (context->band_boundaries[i + 1] - context->band_boundaries[i]);
-        int quanta = get_band_boost_quanta(width);
-        boosts[i] = 0;
-
-        // calculate boost for this band
-        bool did_boost = false;
-        const symbol_context_t* boost_context = initial_boost_context;
-        do {
-            uint32_t do_boost = range_decoder_decode_symbol(rd, boost_context);
-            if (do_boost) {
-                did_boost = true;
-                boosts[i] += quanta;
-                boost_context = subsequent_boost_context;
-            } else {
-                break;
-            }
-        } while (1);
-
-        if (did_boost && (initial_boost_context->ft > 4)) {
-            // if we boosted a band, boosts are twice as likely for subsequent bands (unless the
-            // boost has probability 1/4, in which case the likelihood saturates).
-            double_1_probability(initial_boost_context);
-        }
-    }
-
-    symbol_context_destroy(initial_boost_context);
-    symbol_context_destroy(subsequent_boost_context);
 }

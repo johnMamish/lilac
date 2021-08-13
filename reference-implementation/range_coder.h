@@ -3,8 +3,6 @@
 
 #include <stdint.h>
 
-#include "symbol_context.h"
-
 /**
  * Struct represting the state of a range decoder.
  */
@@ -34,6 +32,9 @@ typedef struct range_decoder {
     /// Pointers describing how many bytes have been read from the front and back of the frame
     int32_t idx_front, idx_back;
 } range_decoder_t;
+
+
+#include "symbol_context.h"
 
 /**
  * Creates a new range decoder to decode a specific frame of raw bytes.
@@ -73,12 +74,20 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
 void print_range_decoder_state(const range_decoder_t* s);
 
 /**
- * Returns the number of bits left in the frame that's being decoded by rd.
+ * Returns the number of bits that have been read from rd so far. This includes both range coded
+ * bits that are read from the "front" as well as raw bits read from the back.
  *
  * @param[in]     rd         Range decoder whose remaining number of bits we want to check.
  *
  * @return The number of bits left to be decoded in rd
  */
-uint32_t range_decoder_tell_bits(const range_decoder_t* rd);
+int32_t range_decoder_tell_bits(const range_decoder_t* rd);
+
+/**
+ * Returns the number of bits in 1/8th bits that have been read from rd so far.
+ *
+ * Similar to range_decoder_tell_bits(), but returns 1/8th bits.
+ */
+int32_t range_decoder_tell_bits_fractional(const range_decoder_t* rd);
 
 #endif

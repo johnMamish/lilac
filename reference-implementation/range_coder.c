@@ -1,6 +1,7 @@
 #include "range_coder.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -28,7 +29,7 @@ static bool range_decoder_needs_renormalization(range_decoder_t* rd)
 static void range_decoder_renormalize(range_decoder_t* rd)
 {
     while (range_decoder_needs_renormalization(rd) && (rd->idx_front < rd->len)) {
-        printf("Renormalizing\n");
+        //printf("Renormalizing\n");
 
         const uint8_t byte_in = rd->data_front[rd->idx_front++];
         uint8_t newval = (rd->saved_lsb << 7) | (byte_in >> 1);
@@ -62,7 +63,7 @@ range_decoder_t* range_decoder_create(const uint8_t* data, int len)
 uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
                                      const symbol_context_t* symbol)
 {
-    printf("Decoding symbol\n");
+    //printf("Decoding symbol\n");
     print_symbol_context(symbol);
 
     // figure out where in the range the symbol lies
@@ -90,7 +91,7 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
         assert(0);
     }
 
-    printf("fs:     %08x    k:     %08x\n", fs, k);
+    //printf("fs:     %08x    k:     %08x\n", fs, k);
 
     // advance decoder state by scaling val and rng
     rd->val = rd->val - (rd->rng / symbol->ft) * (symbol->ft - symbol->fh[k]);
@@ -101,7 +102,7 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
         rd->rng = rd->rng - (rd->rng / symbol->ft) * (symbol->ft - symbol->fh[k]);
     }
 
-    printf("Decoded symbol: %i\n", k);
+    //printf("Decoded symbol: %i\n", k);
 
     range_decoder_renormalize(rd);
 
@@ -116,4 +117,40 @@ void range_decoder_destroy(range_decoder_t* rd)
 void print_range_decoder_state(const range_decoder_t* rd)
 {
     printf("val: %08x    rng: %08x\n", rd->val, rd->rng);
+}
+
+/**
+ * Returns ceil(log2(x + 1)), so
+ *     ilog2_ceil(4) --> 3
+ *     ilog2_ceil(3) --> 2
+ *     ilog2_ceil(9) --> 4
+ */
+static int32_t ilog2_ceil(uint32_t x)
+{
+    return 31 - __builtin_clz(x);
+}
+
+int32_t range_decoder_tell_bits(const range_decoder_t* rd)
+{
+    int32_t total_bits = (rd->idx_front * 8) + (rd->idx_back * 8) + rd->back_bitidx;
+    total_bits -= ilog2_ceil(rd->rng);
+    return total_bits;
+}
+
+static double fpart(double n)
+{
+    return n - ((long)n);
+}
+
+int32_t range_decoder_tell_bits_fractional(const range_decoder_t* rd)
+{
+    int32_t total_bits = 8 * ((rd->idx_front * 8) + (rd->idx_back * 8) + rd->back_bitidx);
+
+    // the most sensible implementation of this would just have
+    //     ceil(log2(rng) * 8)
+    // but we need to make it a little more convoluted than that to match up with the reference
+    // implementation
+    double bits_remaining_in_rng = 8 * ilog2_ceil(rd->rng) + floor(8. * fpart(log2(rd->rng)));
+    total_bits -= (int32_t)(bits_remaining_in_rng);
+    return total_bits;
 }
