@@ -46,7 +46,7 @@ static void calculate_trim_offset(const frame_context_t* fc, int32_t alloc_trim,
 
         /* Tilt of the allocation curve */
         // determine the actual allocation value for band j.
-        trim_offset[j] = (fc->C * N * (alloc_trim - 5 - fc->LM) * (21 - j - 1) * (1 << (fc->LM + BITRES))) >> 6;
+        trim_offset[j] = (fc->C * N * (alloc_trim - 5 - fc->LM) * (21 - j - 1) * (1 << BITRES)) >> 6;
 
         /* Giving less resolution to single-coefficient bands because they get
            more benefit from having one coarse value per coefficient*/
@@ -73,7 +73,7 @@ static void calculate_pvq_thresh(const frame_context_t* fc, int32_t* thresh)
         //  divide by 16.  If 8 times the number of channels is greater, use that instead.  This sets
         //  the minimum allocation to one bit per channel or 48 128th bits per MDCT bin, whichever
         //  is greater."
-        thresh[j] = (((3 * N) << fc->LM) << BITRES) >> 4;
+        thresh[j] = ((3 * N) << BITRES) >> 4;
         if (thresh[j] < (fc->C << BITRES)) {
             thresh[j] = (fc->C << BITRES);
         }
@@ -275,6 +275,47 @@ static int calculate_bits_for_quality(const frame_context_t* fc,
 }
 
 /**
+ * The reference implementation uses a slightly different algorithm for determining per-band bit
+ * allocations at a given quality in one part of the code.
+ */
+static int calculate_bits_for_quality2(const frame_context_t* fc,
+                                       const bit_allocation_parameters_t* bap,
+                                       int q,
+                                       int32_t* bits_out)
+{
+    int psum = 0;
+    int done = 0;
+
+    for (int j = 0; j < 21; j++) {
+        int bitsj;
+        if (q >= 11) {
+            bitsj = fc->cap[j];
+        } else {
+            int N = fc->band_boundaries[j + 1] - fc->band_boundaries[j];
+            bitsj = (fc->C * N * band_allocation[q][j]) / 4;
+        }
+
+        // Incorporate the trim_offset
+        if (bitsj > 0) {
+            bitsj = bitsj + bap->trim_offsets[j];
+            bitsj = (bitsj < 0) ? 0 : bitsj;
+        }
+
+        // Incorporate band boost.
+        if (q > 0)
+            bitsj += bap->boosts[j];
+
+        // if (bap->boosts[j] > 0)
+        //     skip_start = j;
+
+        bits_out[j] = bitsj;
+        psum += bits_out[j];
+    }
+
+    return psum;
+}
+
+/**
  * Do a binary search over the CELT Static allocation table to determine the largest integer value
  * of 'q' (the quality factor) which doesn't exceed the remaining frame size.
  *
@@ -371,8 +412,8 @@ static void calculate_bit_allocation_per_band(const frame_context_t* fc,
     int lo = search_q_lo(fc, bap, total);
 
     int bits_lo[21], bits_hi[21];
-    calculate_bits_for_quality(fc, bap, lo, bits_lo);
-    calculate_bits_for_quality(fc, bap, lo + 1, bits_hi);
+    calculate_bits_for_quality2(fc, bap, lo, bits_lo);
+    calculate_bits_for_quality2(fc, bap, lo + 1, bits_hi);
 
     int bits_delta[21];
     for (int i = 0; i < 21; i++)
@@ -387,13 +428,16 @@ static void calculate_bit_allocation_per_band(const frame_context_t* fc,
 
         int dummy_bits[21] __attribute__((unused));
         int psum = interpolate_fractional_q_between_bits(fc, bits_lo, bits_delta, bap,
-                                                         lo_fractional, dummy_bits);
+                                                         mid, dummy_bits);
 
         if (psum > total)
             hi_fractional = mid;
         else
             lo_fractional = mid;
     }
+
+    printf("q_lo = %i\n", lo);
+    printf("fractional q = %i / 64\n", lo_fractional);
 
     // Interpolate using the final value of lo_fractional that we found.
     interpolate_fractional_q_between_bits(fc, bits_lo, bits_delta, bap,
