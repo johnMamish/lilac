@@ -471,10 +471,9 @@ bit_allocation_description_t* bit_allocation_create(const frame_context_t* fc,
     int32_t bits[21];
     calculate_bit_allocation_per_band(fc, bit_allocation_parameters, total, bits);
 
-    printf("per-band bit allocation in 1/8th bits: ");
-    for (int i = 0; i < 21; i++)
-        printf("% 5ib, ", bits[i]);
-    printf("\b\b \n");
+    printf("1/8th bit allocations before band skipping: {");
+    for (int j = 0; j < 21; j++) printf("% 5d", bits[j]);
+    printf("}\n");
 
     // decide which bands to skip
     // Looks like this searches up from the LF bands to find the band skip, but I'm not sure what
