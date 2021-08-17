@@ -10,7 +10,11 @@ import sys
 # redistribution. e.g.
 #     1/8th bit allocations before band skipping: {  514  514  514  514  501  491  482  ....  773 1111}
 #
-# The reference implementation decoder should be located
+# The reference implementation encoder/decoder's location should be in the OPUS_DEMO variable
+#
+# The reference implementation encoder/decoder should have 2 extra flags added:
+#     celt_force_intra      disable usage of intra frames
+#     celt_disable_pf       disable usage of post-filtering
 
 random.seed(1)
 
@@ -20,7 +24,7 @@ target_string = "1/8th bit allocations before band skipping:"
 LILAC_BASE = os.path.expanduser("~/projects/lilac/")
 OPUS_DEMO = os.path.expanduser('~/projects/opus/opus-annotated/opus_demo')
 
-for testnum in range(10):
+for testnum in range(2000):
     # generate wav file
     freq = random.randint(50, 5000)
     base_filename = '48ksps_' + str(freq)
@@ -31,7 +35,7 @@ for testnum in range(10):
     subprocess.run([wavegen_path] + wavegen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # generate opusdemo file
-    bitrate = random.randint(0x0c000, 0x30000)
+    bitrate = random.randint(55000, 0x30000)
     opusdemo_filename = base_filename + '_' + str(testnum) + '.opusdemo'
     subprocess.run([OPUS_DEMO, '-e', 'audio', '48000', '1', str(bitrate), '-celt_force_intra',
                     '-celt_disable_pf', pcm_filename, opusdemo_filename],
@@ -47,18 +51,39 @@ for testnum in range(10):
 
     # decode file with lilac reference impl
     TEST_PROGRAM = os.path.expanduser('~/projects/lilac/reference-implementation/celt-decode-frame')
-    test_output_collated = []
+    test_output_collated = b""
     for i in range(len(ground_truth_filtered)):
         test_output = subprocess.run([TEST_PROGRAM, opusdemo_filename, str(i)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        test_output_filtered = [l for l in test_output.stdout.decode('utf-8').split('\n') if l.startswith(target_string)]
-        test_output_collated.append(test_output_filtered[0])
+        test_output_collated += test_output.stdout
 
-    print(f"test {testnum}, bitrate {bitrate}:")
-    for i in range(len(ground_truth_filtered)):
-        if (ground_truth_filtered[i] == test_output_collated[i]):
-            print(f"frame {i}: \x1b[32mpass\x1b[0m")
-        else:
-            print(f"frame {i}: \x1b[31mfail\x1b[0m")
-            print(ground_truth_filtered[i])
-            print(test_output_collated[i])
-    print()
+    test_output_filtered = [l for l in test_output_collated.decode('utf-8').split('\n') if l.startswith(target_string)]
+
+    # determine whether test passed or failed
+    print(f"test {testnum}, bitrate {bitrate}: ", end='')
+    try:
+        bad_frames = [i for i in range(len(ground_truth_filtered)) if (ground_truth_filtered[i] != test_output_filtered[i])]
+    except:
+        print(f"ground truth records: {len(ground_truth_filtered)}; test output records: {len(test_output_filtered)}")
+        with open(f"ground_truth_stdout_test_{testnum}.txt", 'w') as outfile:
+            outfile.write(ground_truth.stdout.decode('utf-8'))
+        with open(f"lilac_ref_stdout_test_{testnum}.txt", 'w') as outfile:
+            outfile.write(test_output_collated.decode('utf-8'))
+
+        continue
+
+    if (len(bad_frames) == 0):
+        print("\x1b[32mpass\x1b[0m")
+        os.remove(pcm_filename)
+        os.remove(opusdemo_filename)
+        os.remove(ground_truth_output_filename)
+    else:
+        print("\x1b[31mfail\x1b[0m. Retaining files.")
+        for badidx in bad_frames:
+                print(f"frame {badidx: 3}/{len(ground_truth_filtered): 3}: \x1b[31mfail\x1b[0m")
+                print(ground_truth_filtered[badidx])
+                print(test_output_filtered[badidx])
+
+        with open(f"ground_truth_stdout_test_{testnum}.txt", 'w') as outfile:
+            outfile.write(ground_truth.stdout.decode('utf-8'))
+        with open(f"lilac_ref_stdout_test_{testnum}.txt", 'w') as outfile:
+            outfile.write(test_output_collated.decode('utf-8'))
