@@ -235,7 +235,7 @@ static int calculate_bits_for_quality(const frame_context_t* fc,
         // quality factor of 'q'.
         // In very high bit-rate situations, 'q' might exceed the highest allowed quality value.
         // In that case, we just set bitsj equal to the capacity.
-        if (q >= 10) {
+        if (q >= 11) {
             bitsj = fc->cap[j];
         } else {
             // divide by 4 is because table 5 is in 1/32nd bits, not 1/8th bits.
@@ -336,6 +336,8 @@ static int search_q_lo(const frame_context_t* fc,
             hi = mid - 1;
         else
             lo = mid + 1;
+
+        printf("q search: psum = %i, lo = %i\n", psum, lo);
     } while (lo <= hi);
 
     return (lo - 1);
@@ -415,12 +417,20 @@ static void calculate_bit_allocation_per_band(const frame_context_t* fc,
     calculate_bits_for_quality2(fc, bap, lo, bits_lo);
     calculate_bits_for_quality2(fc, bap, lo + 1, bits_hi);
 
+    printf("1/8th bit allocations for lo: {");
+    for (int j = 0; j < 21; j++) printf("% 5d", bits_lo[j]);
+    printf("}\n");
+    printf("1/8th bit allocations for hi: {");
+    for (int j = 0; j < 21; j++) printf("% 5d", bits_hi[j]);
+    printf("}\n");
+
     int bits_delta[21];
     for (int i = 0; i < 21; i++)
         bits_delta[i] = bits_hi[i] - bits_lo[i];
 
     // Binary search in increments of 1/64th for the value of q between lo and lo + 1 which
     // is as large as possible without exceeding the budget of 'total'.
+    printf("total: %i\n", total);
     int lo_fractional = 0;
     int hi_fractional = 1 << 6;
     for (int i = 0; i < 6; i++) {
@@ -429,11 +439,12 @@ static void calculate_bit_allocation_per_band(const frame_context_t* fc,
         int dummy_bits[21] __attribute__((unused));
         int psum = interpolate_fractional_q_between_bits(fc, bits_lo, bits_delta, bap,
                                                          mid, dummy_bits);
-
         if (psum > total)
             hi_fractional = mid;
         else
             lo_fractional = mid;
+
+        printf("fractional search step %i: psum = %i, lo_fractional = %i\n", i, psum, lo_fractional);
     }
 
     printf("q_lo = %i\n", lo);
@@ -455,15 +466,16 @@ bit_allocation_description_t* bit_allocation_create(const frame_context_t* fc,
 
     // total number of bits in 1/8th bits.
     // TODO: avoid calc duplications for bit reservations like anti_collapse_rsv
-    //bits = (((opus_int32)len * 8) << BITRES) - ec_tell_frac(dec) - 1;
-    //anti_collapse_rsv = isTransient && (LM >= 2) && (bits >= ((LM+2)<<BITRES)) ? (1 << BITRES) : 0;
-    //bits -= anti_collapse_rsv;
     int32_t total = ((rd->len * 8) << BITRES) - range_decoder_tell_bits_fractional(rd) - 1;
     int anti_collapse_rsv = ((fc->transient &&
                              (fc->LM >= 2) &&
                              (total >= ((fc->LM + 2) << BITRES))) ?
                              (1 << BITRES) : 0);
     total -= anti_collapse_rsv;
+
+    //
+    int skip_rsv = (total >= 1 << BITRES) ? (1 << BITRES) : 0;
+    total -= skip_rsv;
 
     printf("computing allocation for % 5i 8th bits\n", total);
 

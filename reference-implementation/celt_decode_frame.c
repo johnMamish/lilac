@@ -38,6 +38,9 @@ int main(int argc, char** argv)
         return -1;
     }
 
+
+    printf("decoding frame %i\n"
+           "================================================\n", ar->frame_number);
     opus_raw_frame_t* frame;
     if ((frame = opus_raw_frame_create_from_nth_in_file(ar->filename, ar->frame_number)) == NULL) {
         printf("error opening opus file %s\n", ar->filename);
@@ -74,6 +77,8 @@ int main(int argc, char** argv)
     bit_allocation_description_t* bits = bit_allocation_create(context, range_decoder);
 
     range_decoder_destroy(range_decoder);
+
+    printf("\n\n");
 
     return 0;
 }
