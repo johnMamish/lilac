@@ -8,3 +8,6 @@ C_SOURCES+= bit_allocation.c
 
 all: $(C_SOURCES)
 	gcc -Wall -std=gnu99 -g $(C_SOURCES) -lm -o celt-decode-frame
+
+pvq-test: pvq.c pvq_test.c
+	gcc -Wall -std=gnu99 -g $^ -o $@
