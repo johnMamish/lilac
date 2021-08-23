@@ -27,7 +27,6 @@ typedef struct pvq_family {
  * Calculates the number of vectors in a given PVQ family
  */
 uint64_t pvq_family_calculate_size(const pvq_family_t* s);
-uint64_t pvq_family_calculate_size2(const pvq_family_t* s);
 
 /**
  *
