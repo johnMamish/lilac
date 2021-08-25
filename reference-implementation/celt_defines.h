@@ -7,4 +7,6 @@
    3 => 1/8th bits.*/
 #define BITRES 3
 
+#define MAX_FINE_BITS 8
+
 #endif

@@ -20,13 +20,13 @@ random.seed(1)
 
 # usage: test_band_allocation_before_skipping.py opusfile.opusdemo
 
-target_string = "1/8th bit allocations before band skipping:"
+target_string = "final bit allocations:"
 LILAC_BASE = os.path.expanduser("~/projects/lilac/")
 OPUS_DEMO = os.path.expanduser('~/projects/opus/opus-annotated/opus_demo')
 
-for testnum in range(200):
+for testnum in range(53600, 60000):
     # generate wav file with several different frequencies
-    freqs = [random.randint(50, 5000) for i in range(10)]
+    freqs = [random.randint(500, 2000) for i in range(10)]
 
     base_filename = '48ksps_' + '_'.join([str(f) for f in freqs])
     pcm_filename = base_filename + '.pcm'
@@ -37,7 +37,8 @@ for testnum in range(200):
     subprocess.run([wavegen_path] + wavegen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # generate opusdemo file
-    bitrate = random.randint(55000, 96000)
+    # bitrate = random.randint(53000, 72000)
+    bitrate = testnum
     opusdemo_filename = base_filename + '_' + str(testnum) + '.opusdemo'
     subprocess.run([OPUS_DEMO, '-e', 'audio', '48000', '1', str(bitrate), '-celt_force_intra',
                     '-celt_disable_pf', pcm_filename, opusdemo_filename],
@@ -78,6 +79,12 @@ for testnum in range(200):
         os.remove(pcm_filename)
         os.remove(opusdemo_filename)
         os.remove(ground_truth_output_filename)
+        if (False):
+            for idx in range(len(ground_truth_filtered)):
+                print(f"frame {idx: 3}/{len(ground_truth_filtered): 3}:")
+                print(ground_truth_filtered[idx])
+                print(test_output_filtered[idx])
+
     else:
         print("\x1b[31mfail\x1b[0m. Retaining files.")
         for badidx in bad_frames:

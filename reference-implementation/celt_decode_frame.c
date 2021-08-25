@@ -74,7 +74,17 @@ int main(int argc, char** argv)
     printf("spread: %i\n", spread_decision);
 
     // Figure out bit allocation for fine energy and PVQ
-    bit_allocation_description_t* bits = bit_allocation_create(context, range_decoder);
+    bit_allocation_description_t* bits;
+    bits = bit_allocation_create(context, range_decoder);
+
+    printf("final bit allocations: ");
+    printf("pvq: {");
+    for (int j = 0; j < 21; j++) { printf("% 5d", bits->pvq_bits[j]); }
+    printf("}, ");
+    printf("fine: {");
+    for (int j = 0; j < 21; j++) { printf("% 5d", bits->energy_bits[j]); }
+    printf("}, ");
+    printf("balance: % 5d", bits->balance);
 
     range_decoder_destroy(range_decoder);
 

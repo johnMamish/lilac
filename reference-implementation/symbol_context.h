@@ -39,6 +39,7 @@ const extern symbol_context_t CELT_transient_context;
 const extern symbol_context_t CELT_intra_context;
 const extern symbol_context_t CELT_spread_context;
 const extern symbol_context_t CELT_trim_context;
+const extern symbol_context_t half_symbol_context;
 
 /**
  * This symbol tells the amount of energy in each band on a coarse level.
@@ -52,29 +53,6 @@ const extern symbol_context_t CELT_trim_context;
  * intra- frames.
  */
 const extern symbol_context_t CELT_coarse_energy_context;
-
-
-// tf_change
-
-// tf_select
-
-// spread
-
-// dyn. alloc.
-
-// skip
-
-// intensity
-
-// dual
-
-// fine energy
-
-// residual
-
-// anti-collapse
-
-// finalize
 
 /**
  * Creates an empty symbol context with the specified number of symbols. This function doesn't fill

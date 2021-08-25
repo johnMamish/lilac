@@ -5,8 +5,12 @@
 #include "frame_context.h"
 
 typedef struct bit_allocation_description {
+    // bits allocated to fine energy
     int32_t energy_bits[21];
+
+    // 1/8th bits allocated to pvq
     int32_t pvq_bits[21];
+
     int32_t fine_priority[21];
 
     // remaining bits
