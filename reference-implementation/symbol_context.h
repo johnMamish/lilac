@@ -39,7 +39,6 @@ const extern symbol_context_t CELT_transient_context;
 const extern symbol_context_t CELT_intra_context;
 const extern symbol_context_t CELT_spread_context;
 const extern symbol_context_t CELT_trim_context;
-const extern symbol_context_t half_symbol_context;
 
 /**
  * This symbol tells the amount of energy in each band on a coarse level.
@@ -78,6 +77,20 @@ symbol_context_t* symbol_context_create(uint32_t num_symbols, uint32_t ft, const
  * @return A new symbol context with a CDF as described above.
  */
 symbol_context_t* symbol_context_create_minprob_1(uint32_t logp, const char* name);
+
+/**
+ * Creates a symbol context that includes 2^n symbols, each with equal probability. i.e. creates
+ * a symbol context with {1, 1, 1, .... 1, 1} / 2^n
+ *
+ * @param[in]     n           Number of symbols in the context. If n >= 24, this function will
+ *                            return NULL.
+ *
+ * @return A new symbol context with the above CDF.
+ *
+ * Using a symbol_context_t is _really_ not the most efficient way for a range_decoder_t to decode
+ * symbols with the above CDF, but this keeps the s/w interface clean for now.
+ */
+symbol_context_t* symbol_context_create_equal_distribution_pow2(int32_t n, const char* name);
 
 /**
  * Creates a symbol context from the laplace distribution given a frame size, whether it's

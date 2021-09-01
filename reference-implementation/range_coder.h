@@ -74,6 +74,19 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
 void print_range_decoder_state(const range_decoder_t* s);
 
 /**
+ * Reads raw bits from the back of the range decoder.
+ *
+ * For a description of the raw bits at the back of the range decoder, see section 4.1 of RFC6716.
+ * Bits are packed at the end lsb-to-msb; bits "closer to the end" are lsb.
+ *
+ * @param[in,out] rd        Raw bits will be read from the back of range decoder rd
+ * @param[in]     n         How many bits to read from rd. Should be <= 32.
+ *
+ * @return The n bits at the end of rd's back
+ */
+uint32_t range_decoder_read_raw_bytes_from_back(range_decoder_t* rd, int n);
+
+/**
  * Returns the number of bits that have been read from rd so far. This includes both range coded
  * bits that are read from the "front" as well as raw bits read from the back.
  *

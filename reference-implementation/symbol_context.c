@@ -96,6 +96,22 @@ symbol_context_t* symbol_context_create_minprob_1(uint32_t logp, const char* nam
     return sc;
 }
 
+symbol_context_t* symbol_context_create_equal_distribution_pow2(int32_t n, const char* name)
+{
+    if ((n > 0) && (n < 16)) {
+        symbol_context_t* sc = symbol_context_create((1 << n), (1 << n), name);
+
+        for (int i = 0; i < (1 << n); i++) {
+            sc->fl[i] = i;
+            sc->fh[i] = i + 1;
+        }
+
+        return sc;
+    } else {
+        return NULL;
+    }
+}
+
 /**
  * Parameters of the Laplace-like probability models used for the coarse energy.
  * There is one pair of parameters for each frame size, prediction type
@@ -169,7 +185,7 @@ static const uint8_t e_prob_model[4][2][42] = {
 
 void print_symbol_context(const symbol_context_t* sym)
 {
-    return;
+    //return;
     printf("Decoding symbol: %s\n", sym->symbol_context_name);
     printf("PDF: {");
     for (int i = 0; i < sym->num_symbols; i++) {

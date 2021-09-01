@@ -13,6 +13,7 @@
 #include "range_coder.h"
 #include "symbol_context.h"
 #include "celt_util.h"
+#include "fine_energy.h"
 
 #define ARRAY_NUMEL(arr) (sizeof(arr) / (sizeof(arr[0])))
 
@@ -84,7 +85,12 @@ int main(int argc, char** argv)
     printf("fine: {");
     for (int j = 0; j < 21; j++) { printf("% 5d", bits->energy_bits[j]); }
     printf("}, ");
-    printf("balance: % 5d", bits->balance);
+    printf("balance: % 5d\n", bits->balance);
+
+    fine_energy_t* fine_energy = fine_energy_create_from_range_decoder(context, bits, range_decoder);
+    printf("fine energy: {");
+    for (int i = 0; i < 21; printf("%11.6f", fine_energy->energies[i++]));
+    printf("}\n");
 
     range_decoder_destroy(range_decoder);
 

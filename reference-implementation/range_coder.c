@@ -109,6 +109,33 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
     return k;
 }
 
+uint32_t range_decoder_read_raw_bytes_from_back(range_decoder_t* rd, int n)
+{
+    const int32_t BITS_PER_BYTE = 8;
+
+    // add first partial bit.
+    int32_t bits_added = BITS_PER_BYTE - rd->back_bitidx;
+    uint32_t ret = rd->data_back[-rd->idx_back] >> rd->back_bitidx;
+
+    // add whole bytes until we exceed the # of bits we need.
+    int i = 0;
+    while (bits_added < n) {
+        rd->idx_back++;
+        ret |= (((uint32_t)rd->data_back[-rd->idx_back]) << bits_added);
+        bits_added += 8;
+    }
+
+    // mask off additional bits
+    uint32_t mask = ((uint32_t)1 << n) - 1;
+    ret &= mask;
+
+    // keep track of remaining balance.
+    int32_t excess = bits_added - n;
+    rd->back_bitidx = BITS_PER_BYTE - excess;
+
+    return ret;
+}
+
 void range_decoder_destroy(range_decoder_t* rd)
 {
     free(rd);
