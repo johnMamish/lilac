@@ -16,12 +16,17 @@
  */
 typedef struct pvq_family {
     /// Number of elements in each vector of the pyramid
-    int l;
+    int32_t l;
 
     /// Number of pulses in each
-    int k;
+    int32_t k;
 } pvq_family_t;
 
+
+typedef struct pvq_vector {
+    int32_t  len;
+    int32_t* x;
+} pvq_vector_t;
 
 /**
  * Calculates the number of vectors in a given PVQ family
@@ -29,8 +34,9 @@ typedef struct pvq_family {
 uint64_t pvq_family_calculate_size(const pvq_family_t* s);
 
 /**
+ * Given a number 'b' in the range {0, ..., N(L, K) - 1}, calculates the corresponding vector
  *
  */
-
+pvq_vector_t* pvq_vector_create_from_codename(const pvq_family_t* s, uint64_t b);
 
 #endif
