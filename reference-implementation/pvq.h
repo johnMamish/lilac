@@ -39,4 +39,6 @@ uint64_t pvq_family_calculate_size(const pvq_family_t* s);
  */
 pvq_vector_t* pvq_vector_create_from_codename(const pvq_family_t* s, uint64_t b);
 
+void pvq_vector_destroy(pvq_vector_t*);
+
 #endif

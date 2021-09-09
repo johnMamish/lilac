@@ -64,7 +64,7 @@ static void pvq_vector_create_from_codename_r(const pvq_family_t* s, uint64_t b,
     if (s->l == 0) {
         return;
     } else if (s->l == 1) {
-        x[0] = (b < s->k) ? s->k : -s->k;
+        x[0] = (b == 0) ? s->k : -s->k;
         return;
     }
 
@@ -109,4 +109,10 @@ pvq_vector_t* pvq_vector_create_from_codename(const pvq_family_t* s, uint64_t b)
     pvq_vector_create_from_codename_r(s, b, result->x);
 
     return result;
+}
+
+void pvq_vector_destroy(pvq_vector_t* pvqv)
+{
+    free(pvqv->x);
+    free(pvqv);
 }
