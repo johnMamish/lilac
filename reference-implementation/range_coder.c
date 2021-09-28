@@ -118,7 +118,6 @@ uint32_t range_decoder_read_raw_bytes_from_back(range_decoder_t* rd, int n)
     uint32_t ret = rd->data_back[-rd->idx_back] >> rd->back_bitidx;
 
     // add whole bytes until we exceed the # of bits we need.
-    int i = 0;
     while (bits_added < n) {
         rd->idx_back++;
         ret |= (((uint32_t)rd->data_back[-rd->idx_back]) << bits_added);
@@ -180,4 +179,30 @@ int32_t range_decoder_tell_bits_fractional(const range_decoder_t* rd)
     double bits_remaining_in_rng = 8 * ilog2_ceil(rd->rng) + floor(8. * fpart(log2(rd->rng)));
     total_bits -= (int32_t)(bits_remaining_in_rng);
     return total_bits;
+}
+
+
+void range_decoder_reserve_eighth_bits(range_decoder_t* rd, int32_t reserve_amount)
+{
+    rd->reserved_eighth_bits += reserve_amount;
+}
+
+/**
+ * Decreases the number of reserved bits in rd by the indicated amount
+ */
+void range_decoder_dereserve_eighth_bits(range_decoder_t* rd, int32_t reserve_amount)
+{
+    rd->reserved_eighth_bits -= reserve_amount;
+}
+
+/**
+ * Returns the number of unused and unreserved eighth bits in the range decoder.
+ */
+int32_t range_decoder_get_remaining_eighth_bits(const range_decoder_t* rd)
+{
+    return (((8 * rd->len) << BITRES) -
+            range_decoder_tell_bits_fractional(rd) -
+            rd->reserved_eighth_bits);
+
+    //return ((8 * 8 * rd->len) - range_decoder_tell_bits_fractional(rd));
 }

@@ -4,16 +4,21 @@
 #include <stdint.h>
 #include "frame_context.h"
 
+typedef struct band_allocation {
+    // bits allocated to fine energy for this band
+    int32_t energy_bits;
+
+    // 1/8th bits allocated to pvq for this band
+    int32_t pvq_bits;
+
+    // fine priority; a value of 0 or 1.
+    int32_t fine_priority;
+} band_allocation_t;
+
 typedef struct bit_allocation_description {
-    // bits allocated to fine energy
-    int32_t energy_bits[21];
+    band_allocation_t bands[21];
 
-    // 1/8th bits allocated to pvq
-    int32_t pvq_bits[21];
-
-    int32_t fine_priority[21];
-
-    // remaining bits
+    // Remaining bits at the end of 'band_allocations' not used by any of the bands.
     int32_t balance;
 } bit_allocation_description_t;
 

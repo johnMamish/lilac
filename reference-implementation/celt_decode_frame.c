@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "anti_collapse.h"
 #include "bit_allocation.h"
 #include "range_coder.h"
 #include "symbol_context.h"
@@ -76,14 +77,15 @@ int main(int argc, char** argv)
 
     // Figure out bit allocation for fine energy and PVQ
     bit_allocation_description_t* bits;
+    reserve_anti_collapse_bit_from_range_decoder(context, range_decoder);
     bits = bit_allocation_create(context, range_decoder);
 
     printf("final bit allocations: ");
     printf("pvq: {");
-    for (int j = 0; j < 21; j++) { printf("% 5d", bits->pvq_bits[j]); }
+    for (int j = 0; j < 21; j++) { printf("% 5d", bits->bands[j].pvq_bits); }
     printf("}, ");
     printf("fine: {");
-    for (int j = 0; j < 21; j++) { printf("% 5d", bits->energy_bits[j]); }
+    for (int j = 0; j < 21; j++) { printf("% 5d", bits->bands[j].energy_bits); }
     printf("}, ");
     printf("balance: % 5d\n", bits->balance);
 

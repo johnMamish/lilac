@@ -16,8 +16,6 @@ static const int32_t FINE_OFFSET = 21;
  * This structure holds some of that information
  */
 typedef struct bit_allocation_parameters {
-    /// total number of bits to allocate in 1/8th bit units
-    int32_t  total;
     int32_t* boosts;
     int32_t* pvq_threshold;
     int32_t* trim_offsets;
@@ -27,9 +25,6 @@ typedef struct bit_allocation_parameters {
  *
  */
 typedef struct bit_allocation_state {
-    /// How many bits are reserved for future flags (e.g. skip_rsv)
-    int32_t reserved;
-
     ///
     int32_t skip_start;
 
@@ -42,6 +37,9 @@ typedef struct bit_allocation_state {
 
     /// Actual bit allocations in 1/8th bit
     int32_t* bits;
+
+    /// Set to true if a bit was reserved for skip start
+    bool skip_start_rsv;
 } bit_allocation_state_t;
 
 /**
@@ -343,9 +341,10 @@ static int calculate_bits_for_quality2(const frame_context_t* fc,
  */
 static int search_q_lo(const frame_context_t* fc,
                        const bit_allocation_parameters_t* bap,
-                       const bit_allocation_state_t* state)
+                       const bit_allocation_state_t* state,
+                       const range_decoder_t* rd)
 {
-    int32_t total = bap->total - state->reserved;
+    int32_t total = range_decoder_get_remaining_eighth_bits(rd) - 1;
 
     int lo = 1;
     int hi = 11 - 1;
@@ -431,9 +430,10 @@ static int interpolate_fractional_q_between_bits(const frame_context_t* fc,
  */
 static void calculate_bit_allocation_per_band(const frame_context_t* fc,
                                               const bit_allocation_parameters_t* bap,
-                                              bit_allocation_state_t* state)
+                                              bit_allocation_state_t* state,
+                                              const range_decoder_t* rd)
 {
-    int lo = search_q_lo(fc, bap, state);
+    int lo = search_q_lo(fc, bap, state, rd);
 
     int bits_lo[21], bits_hi[21];
     calculate_bits_for_quality2(fc, bap, lo, bits_lo);
@@ -452,7 +452,7 @@ static void calculate_bit_allocation_per_band(const frame_context_t* fc,
 
     // Binary search in increments of 1/64th for the value of q between lo and lo + 1 which
     // is as large as possible without exceeding the budget of 'total'.
-    printf("total: %i\n", bap->total - state->reserved);
+    printf("total: %i\n", range_decoder_get_remaining_eighth_bits(rd) - 1);
     int lo_fractional = 0;
     int hi_fractional = 1 << 6;
     for (int i = 0; i < 6; i++) {
@@ -461,7 +461,7 @@ static void calculate_bit_allocation_per_band(const frame_context_t* fc,
         int dummy_bits[21] __attribute__((unused));
         int psum = interpolate_fractional_q_between_bits(fc, bits_lo, bits_delta, bap,
                                                          mid, dummy_bits);
-        if (psum > (bap->total - state->reserved))
+        if (psum > (range_decoder_get_remaining_eighth_bits(rd) - 1))
             hi_fractional = mid;
         else
             lo_fractional = mid;
@@ -501,10 +501,11 @@ static int32_t get_force_skip_threshold(int32_t pvq_threshold,
 static int32_t calculate_band_bits(const frame_context_t* fc,
                                    const bit_allocation_parameters_t* bap,
                                    int32_t j,
-                                   const bit_allocation_state_t* state)
+                                   const bit_allocation_state_t* state,
+                                   const range_decoder_t* rd)
 {
     int32_t remaining_unskipped_mdct_buckets = (fc->band_boundaries[j] - fc->band_boundaries[0]);
-    int32_t remaining_bits = bap->total - state->bit_sum;
+    int32_t remaining_bits = range_decoder_get_remaining_eighth_bits(rd) - 1 - state->bit_sum;
     int32_t bits_per_coefficient = remaining_bits / remaining_unskipped_mdct_buckets;
     remaining_bits -= remaining_unskipped_mdct_buckets * bits_per_coefficient;
 
@@ -533,20 +534,21 @@ void adjust_bit_allocation_for_band_skips(const frame_context_t* fc,
     for (j = 20; j >= 0; j--) {
         if (j <= state->skip_start) {
             // TODO: should be -= skip_rsv, where skip_rsv is 0 if there aren't enough bits left.
-            state->reserved -= (1 << BITRES);
+            range_decoder_dereserve_eighth_bits(rd, (1 << BITRES));
             break;
         }
 
-        int32_t band_bits = calculate_band_bits(fc, bap, j, state);
+        int32_t band_bits = calculate_band_bits(fc, bap, j, state, rd);
         int32_t force_skip_threshold = get_force_skip_threshold(bap->pvq_threshold[j], alloc_floor);
         bool force_skip = (band_bits < force_skip_threshold);
         if (!force_skip) {
-            bool skip = range_decoder_decode_symbol(rd, force_skip_symbol);
-            if (skip)
+            bool stop_skip = range_decoder_decode_symbol(rd, force_skip_symbol);
+            if (stop_skip) {
+                range_decoder_dereserve_eighth_bits(rd, (1 << BITRES));
                 break;
+            }
 
             // account for the bit that we used to skip this band.
-            state->bit_sum += (1 << BITRES);
             band_bits -= (1 << BITRES);
         }
 
@@ -571,10 +573,11 @@ void adjust_bit_allocation_for_band_skips(const frame_context_t* fc,
  */
 static void redistribute_leftover_bits(const frame_context_t* fc,
                                        const bit_allocation_parameters_t* bap,
-                                       bit_allocation_state_t* state)
+                                       bit_allocation_state_t* state,
+                                       const range_decoder_t* rd)
 {
     // Distribute leftover 1/8th bits evenly over all bands.
-    int32_t remaining_bits = bap->total - state->bit_sum - state->reserved;
+    int32_t remaining_bits = range_decoder_get_remaining_eighth_bits(rd) - 1 - state->bit_sum;
     printf("leftover 1/8th bits before redistribution: %i\n", remaining_bits);
 
     int32_t remaining_mdct_buckets = (fc->band_boundaries[state->num_unskipped_bands] -
@@ -654,47 +657,47 @@ bit_allocation_create_from_bit_allocation_state(const frame_context_t* fc,
             int32_t den = N;
             int32_t offset = calculate_offset(fc, state, N, j);
 
-            alloc->energy_bits[j] = (state->bits[j] + offset + (den << (BITRES-1)));
-            if (alloc->energy_bits[j] < 0)
-                alloc->energy_bits[j] = 0;
-            alloc->energy_bits[j] /= den;
-            alloc->energy_bits[j] >>= BITRES;
+            alloc->bands[j].energy_bits = (state->bits[j] + offset + (den << (BITRES-1)));
+            if (alloc->bands[j].energy_bits < 0)
+                alloc->bands[j].energy_bits = 0;
+            alloc->bands[j].energy_bits /= den;
+            alloc->bands[j].energy_bits >>= BITRES;
 
-            if (alloc->energy_bits[j] > (state->bits[j] >> BITRES))
-                alloc->energy_bits[j] = (state->bits[j] >> BITRES);
+            if (alloc->bands[j].energy_bits > (state->bits[j] >> BITRES))
+                alloc->bands[j].energy_bits = (state->bits[j] >> BITRES);
 
             /* More than that is useless because that's about as far as PVQ can go */
-            if (alloc->energy_bits[j] > MAX_FINE_BITS)
-                alloc->energy_bits[j] = MAX_FINE_BITS;
+            if (alloc->bands[j].energy_bits > MAX_FINE_BITS)
+                alloc->bands[j].energy_bits = MAX_FINE_BITS;
 
             /* If we rounded down or capped this band, make it a candidate for the
                final fine energy pass */
-            if ((alloc->energy_bits[j] * (den << BITRES)) >= (state->bits[j] + offset))
-                alloc->fine_priority[j] = 1;
+            if ((alloc->bands[j].energy_bits * (den << BITRES)) >= (state->bits[j] + offset))
+                alloc->bands[j].fine_priority = 1;
             else
-                alloc->fine_priority[j] = 0;
+                alloc->bands[j].fine_priority = 0;
 
             /* Remove the allocated fine bits; the rest are assigned to PVQ */
             //bits[j] -= C * ebits[j] << BITRES;
-            alloc->pvq_bits[j] = state->bits[j] - (alloc->energy_bits[j] << BITRES);
+            alloc->bands[j].pvq_bits = state->bits[j] - (alloc->bands[j].energy_bits << BITRES);
         } else {
             excess = bit - (fc->C << BITRES);
             if (excess < 0)
                 excess = 0;
-            alloc->pvq_bits[j] = bit - excess;
-            alloc->energy_bits[j] = 0;
-            alloc->fine_priority[j] = 1;
+            alloc->bands[j].pvq_bits = bit - excess;
+            alloc->bands[j].energy_bits = 0;
+            alloc->bands[j].fine_priority = 1;
         }
 
         if(excess > 0) {
-            int32_t extra_fine = MAX_FINE_BITS - alloc->energy_bits[j];
+            int32_t extra_fine = MAX_FINE_BITS - alloc->bands[j].energy_bits;
             if (extra_fine > (excess >> BITRES))
                 extra_fine = excess >> BITRES;
-            alloc->energy_bits[j] += extra_fine;
+            alloc->bands[j].energy_bits += extra_fine;
 
             int extra_bits;
             extra_bits = extra_fine << BITRES;
-            alloc->fine_priority[j] = extra_bits >= excess - alloc->balance;
+            alloc->bands[j].fine_priority = extra_bits >= excess - alloc->balance;
             excess -= extra_bits;
         }
         alloc->balance = excess;
@@ -703,9 +706,9 @@ bit_allocation_create_from_bit_allocation_state(const frame_context_t* fc,
     /* The skipped bands use all their bits for fine energy. */
     for (int j = state->num_unskipped_bands; j < 21; j++)
     {
-        alloc->energy_bits[j] = state->bits[j] >> BITRES;
-        alloc->pvq_bits[j] = 0;
-        alloc->fine_priority[j] = (alloc->energy_bits[j] < 1);
+        alloc->bands[j].energy_bits = state->bits[j] >> BITRES;
+        alloc->bands[j].pvq_bits = 0;
+        alloc->bands[j].fine_priority = (alloc->bands[j].energy_bits < 1);
     }
 
     return alloc;
@@ -721,22 +724,15 @@ bit_allocation_description_t* bit_allocation_create(const frame_context_t* fc,
     // Calculate band boosts
     bit_allocation_parameters_t* alloc_params = bit_allocation_parameters_create(fc, rd);
 
-    // total number of bits in 1/8th bits.
-    alloc_params->total = (((rd->len * 8) << BITRES) -
-                                        range_decoder_tell_bits_fractional(rd) - 1);
-    int anti_collapse_rsv = ((fc->transient &&
-                             (fc->LM >= 2) &&
-                             ((alloc_params->total - state->reserved) >= ((fc->LM + 2) << BITRES))) ?
-                             (1 << BITRES) : 0);
-    state->reserved += anti_collapse_rsv;
+    if ((range_decoder_get_remaining_eighth_bits(rd) - 1) >= (1 << BITRES)) {
+        // If there's at least one bit available for skip start signalling, reserve it.
+        range_decoder_reserve_eighth_bits(rd, (1 << BITRES));
+    }
 
-    if ((alloc_params->total - state->reserved) >= (1 << BITRES))
-        state->reserved += (1 << BITRES);
-
-    printf("computing allocation for % 5i 8th bits\n", alloc_params->total - state->reserved);
+    printf("computing allocation for % 5i 8th bits\n", range_decoder_get_remaining_eighth_bits(rd) - 1);
 
     // interpolate per-band bit allocations from q factor
-    calculate_bit_allocation_per_band(fc, alloc_params, state);
+    calculate_bit_allocation_per_band(fc, alloc_params, state, rd);
 
     printf("1/8th bit allocations before band skipping: {");
     for (int j = 0; j < 21; j++) printf("% 5d", state->bits[j]);
@@ -765,7 +761,7 @@ bit_allocation_description_t* bit_allocation_create(const frame_context_t* fc,
     for (int j = 0; j < 21; j++) printf("% 5d", state->bits[j]);
     printf("}\n");
 
-    redistribute_leftover_bits(fc, alloc_params, state);
+    redistribute_leftover_bits(fc, alloc_params, state, rd);
     printf("1/8th bit allocations after penultimate redistribution: {");
     for (int j = 0; j < 21; j++) printf("% 5d", state->bits[j]);
     printf("}\n");

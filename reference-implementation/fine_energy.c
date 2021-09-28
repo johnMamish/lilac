@@ -17,7 +17,7 @@ fine_energy_t* fine_energy_create_from_range_decoder(const frame_context_t* fc,
     fe->energies = calloc(21, sizeof(float));
 
     for (int i = 0; i < 21; i++) {
-        int32_t nbits = alloc->energy_bits[i];
+        int32_t nbits = alloc->bands[i].energy_bits;
         if (nbits >= 0) {
             int32_t fine_raw_bits = range_decoder_read_raw_bytes_from_back(rd, nbits);
             float fine_energy = fine_raw_bits_to_db(fine_raw_bits, nbits);

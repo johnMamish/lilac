@@ -31,6 +31,17 @@ typedef struct range_decoder {
 
     /// Pointers describing how many bytes have been read from the front and back of the frame
     int32_t idx_front, idx_back;
+
+    /// Hack - some parts of the code might want to reserve a bit further down in the stream
+    /// that it knows will be decoded later. Code that's interested in the number of remaining bits
+    /// to be decoded will be interested in this info and expects to get it from 'len' and 'ec_tell'
+    ///
+    /// IT WILL BE BETTER if we yoke together an entropy coder and a more sophisticated bit
+    /// allocation structure into a single aggregate struct and enforce certain joint pre- and post-
+    /// on the bitstream and budget to make sure that they're consistent with each other. This
+    /// reservation would be part of the bit allocation and the rest of the bit allocation would
+    /// need to be consistent with it.
+    int32_t reserved_eighth_bits;
 } range_decoder_t;
 
 
@@ -102,5 +113,20 @@ int32_t range_decoder_tell_bits(const range_decoder_t* rd);
  * Similar to range_decoder_tell_bits(), but returns 1/8th bits.
  */
 int32_t range_decoder_tell_bits_fractional(const range_decoder_t* rd);
+
+/**
+ * Increases the number of reserved bits in rd by the indicated amount
+ */
+void range_decoder_reserve_eighth_bits(range_decoder_t* rd, int32_t reserve_amount);
+
+/**
+ * Decreases the number of reserved bits in rd by the indicated amount
+ */
+void range_decoder_dereserve_eighth_bits(range_decoder_t* rd, int32_t reserve_amount);
+
+/**
+ * Returns the number of unused and unreserved eighth bits in the range decoder.
+ */
+int32_t range_decoder_get_remaining_eighth_bits(const range_decoder_t* rd);
 
 #endif
