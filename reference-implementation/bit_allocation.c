@@ -544,6 +544,7 @@ void adjust_bit_allocation_for_band_skips(const frame_context_t* fc,
         if (!force_skip) {
             bool stop_skip = range_decoder_decode_symbol(rd, force_skip_symbol);
             if (stop_skip) {
+                // the skip stop bit was used, so it should no longer be reserved.
                 range_decoder_dereserve_eighth_bits(rd, (1 << BITRES));
                 break;
             }
