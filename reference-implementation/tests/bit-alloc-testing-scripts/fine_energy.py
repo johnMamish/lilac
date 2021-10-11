@@ -20,7 +20,7 @@ random.seed(1)
 
 # usage: test_band_allocation_before_skipping.py opusfile.opusdemo
 
-target_string = "1/8th bit allocations after band skipping:"
+target_string = "fine energy:"
 LILAC_BASE = os.path.expanduser("~/projects/lilac/")
 OPUS_DEMO = os.path.expanduser('~/projects/opus/opus-annotated/opus_demo')
 
@@ -74,7 +74,7 @@ for testnum in range(53600, 60000):
 
         continue
 
-    if (len(bad_frames) == 0):
+    if ((len(ground_truth_filtered) > 0) and (len(bad_frames) == 0)):
         print("\x1b[32mpass\x1b[0m")
         os.remove(pcm_filename)
         os.remove(opusdemo_filename)

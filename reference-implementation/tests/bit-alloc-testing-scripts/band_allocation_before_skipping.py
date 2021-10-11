@@ -66,9 +66,9 @@ for testnum in range(200):
         bad_frames = [i for i in range(len(ground_truth_filtered)) if (ground_truth_filtered[i] != test_output_filtered[i])]
     except:
         print(f"ground truth records: {len(ground_truth_filtered)}; test output records: {len(test_output_filtered)}")
-        with open(f"ground_truth_stdout_test_{testnum}.txt", 'w') as outfile:
+        with open(f"ground_truth_stdout_test_{testnum}.log", 'w') as outfile:
             outfile.write(ground_truth.stdout.decode('utf-8'))
-        with open(f"lilac_ref_stdout_test_{testnum}.txt", 'w') as outfile:
+        with open(f"lilac_ref_stdout_test_{testnum}.log", 'w') as outfile:
             outfile.write(test_output_collated.decode('utf-8'))
 
         continue
@@ -85,7 +85,7 @@ for testnum in range(200):
                 print(ground_truth_filtered[badidx])
                 print(test_output_filtered[badidx])
 
-        with open(f"ground_truth_stdout_test_{testnum}.txt", 'w') as outfile:
+        with open(f"ground_truth_stdout_test_{testnum}.log", 'w') as outfile:
             outfile.write(ground_truth.stdout.decode('utf-8'))
-        with open(f"lilac_ref_stdout_test_{testnum}.txt", 'w') as outfile:
+        with open(f"lilac_ref_stdout_test_{testnum}.log", 'w') as outfile:
             outfile.write(test_output_collated.decode('utf-8'))
