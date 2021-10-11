@@ -10,6 +10,8 @@
 #include <string.h>
 
 #include "anti_collapse.h"
+#include "band_shapes.h"
+#include "band_decoder.h"
 #include "bit_allocation.h"
 #include "range_coder.h"
 #include "symbol_context.h"
@@ -93,6 +95,9 @@ int main(int argc, char** argv)
     printf("fine energy: {");
     for (int i = 0; i < 21; printf("%11.6f", fine_energy->energies[i++]));
     printf("}\n");
+
+    band_shapes_t* shapes __attribute__((unused));
+    shapes = decode_band_shapes(context, bits, range_decoder);
 
     range_decoder_destroy(range_decoder);
 

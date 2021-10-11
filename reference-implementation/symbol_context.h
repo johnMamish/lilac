@@ -107,6 +107,14 @@ symbol_context_t* symbol_context_create_equal_distribution_pow2(int32_t n, const
 symbol_context_t* symbol_context_create_from_laplace(const frame_context_t* context, uint32_t band_number);
 
 /**
+ * Generates a symbol context with a triangular PDF appropriate for decoding band-shape theta
+ * parameters
+ *
+ * @param[in]     qn         Number of
+ */
+symbol_context_t* symbol_context_create_triangular_theta(int32_t qn);
+
+/**
  * Frees the given symbol context and any associated storage.
  */
 void symbol_context_destroy(symbol_context_t* symbol_context);

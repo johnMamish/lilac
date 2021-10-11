@@ -94,6 +94,7 @@ uint32_t range_decoder_decode_symbol(range_decoder_t* rd,
     //printf("fs:     %08x    k:     %08x\n", fs, k);
 
     // advance decoder state by scaling val and rng
+    // this should be moved to its own function
     rd->val = rd->val - (rd->rng / symbol->ft) * (symbol->ft - symbol->fh[k]);
 
     if (symbol->fl[k] > 0) {
@@ -135,6 +136,40 @@ uint32_t range_decoder_read_raw_bytes_from_back(range_decoder_t* rd, int n)
     return ret;
 }
 
+
+uint32_t range_decoder_read_uniform_integer(range_decoder_t* rd, uint32_t n)
+{
+    if (n > 255) {
+        printf("range_decoder_read_uniform_integer: unimplemented\n");
+        *((volatile int*)0) = 0xffeeffee;
+        return -1;
+    } else {
+        // Decode the symbol
+        uint32_t symbol_location = (rd->val / (rd->rng / n)) + 1;
+        uint32_t symbol;
+
+        if (symbol_location > n) {
+            symbol = 0;
+        } else {
+            symbol = n - symbol_location;
+        }
+
+        // Update the decoder
+        rd->val = rd->val - ((rd->rng / n) *  (n - (symbol + 1)));
+
+        if (symbol > 0) {
+            rd->rng = (rd->rng / n);
+        } else {
+            rd->rng = rd->rng - ((rd->rng / n) * (n - 1));
+        }
+
+        range_decoder_renormalize(rd);
+
+        return symbol;
+    }
+}
+
+
 void range_decoder_destroy(range_decoder_t* rd)
 {
     free(rd);
@@ -163,6 +198,9 @@ int32_t range_decoder_tell_bits(const range_decoder_t* rd)
     return total_bits;
 }
 
+/**
+ * utility function that returns the fractional part of a floating point number.
+ */
 static double fpart(double n)
 {
     return n - ((long)n);

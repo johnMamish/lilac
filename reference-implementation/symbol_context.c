@@ -275,6 +275,47 @@ symbol_context_t* symbol_context_create_from_laplace(const frame_context_t* cont
 }
 
 
+symbol_context_t* symbol_context_create_triangular_theta(int32_t qn)
+{
+    int32_t ft = ((qn >> 1) + 1) * ((qn >> 1) + 1);
+    int32_t mid = (qn >> 1);
+    symbol_context_t* sym = symbol_context_create(qn + 1, ft, "theta triangular");
+    int32_t* pdf = calloc(qn + 1, sizeof(uint32_t));
+    if ((qn % 2) == 0) {
+        for (int i = 0; i < mid; i++) {
+            pdf[i] = i + 1;
+        }
+        for (int i = mid; i <= qn; i++) {
+            pdf[i] = qn - i + 1;
+        }
+    } else {
+        for (int i = 0; i < mid; i++) {
+            pdf[i] = i + 1;
+        }
+        for (int i = mid; i < qn; i++) {
+            pdf[i + 1] = qn - i;
+        }
+    }
+
+    sym->fl[0] = 0;
+    sym->fh[0] = pdf[0];
+    for (int i = 1; i < sym->num_symbols; i++) {
+        sym->fl[i] = sym->fh[i - 1];
+        sym->fh[i] = sym->fl[i] + pdf[i];
+    }
+
+#if 0
+    printf("pdf of newly created triangular theta symbol is:\n");
+    for (int i = 0; i <= qn; i++) {
+        printf("%5i: %5i\n", i, pdf[i]);
+    }
+#endif
+
+    free(pdf);
+    return sym;
+}
+
+
 void symbol_context_destroy(symbol_context_t* sc)
 {
     free(sc->symbol_context_name);

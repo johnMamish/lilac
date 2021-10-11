@@ -98,6 +98,16 @@ void print_range_decoder_state(const range_decoder_t* s);
 uint32_t range_decoder_read_raw_bytes_from_back(range_decoder_t* rd, int n);
 
 /**
+ * Decodes a uniform integer from the given range decoder.
+ *
+ * @param[in,out] rd         range_decoder from which the symbol should be read.
+ * @param[in]     n          Number of symbols which can be decoded. A number in [0, n) will be
+ *                           returned. Note that the highest value that can be returned is n - 1,
+ *                           not n.
+ */
+uint32_t range_decoder_read_uniform_integer(range_decoder_t* rd, uint32_t n);
+
+/**
  * Returns the number of bits that have been read from rd so far. This includes both range coded
  * bits that are read from the "front" as well as raw bits read from the back.
  *
