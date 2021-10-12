@@ -43,4 +43,16 @@ opus_raw_frame_t* opus_raw_frame_create_from_nth_in_file(const char* name, int f
 
 void opus_raw_frame_destroy(opus_raw_frame_t* f);
 
+/**
+ * These functions need to be implemented to be bit-exact, and the ones in the official Opus
+ * implementation are correct by definition, so we just take those.
+ */
+int16_t bitexact_cos(int16_t x);
+int bitexact_log2tan(int isin, int icos);
+
+/**
+ * Restricts val so that it lies within the range [min, max].
+ */
+int32_t restrict_to_range_int32(int32_t val, int32_t min, int32_t max);
+
 #endif

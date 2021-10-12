@@ -1,8 +1,10 @@
 #include "pvq.h"
 
-#include "bit_allocation.h"
-#include "pvq_decoder.h"
 #include "band_shapes.h"
+#include "bit_allocation.h"
+#include "celt_util.h"
+#include "opus_celt_macros.h"
+#include "pvq_decoder.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -165,29 +167,6 @@ static int32_t get_theta_range(const band_partition_context_t* band_context,
     return qn;
 }
 
-static void calculate_bit_split_from_theta(const band_partition_context_t* bpc,
-                                           int32_t theta,
-                                           int32_t* eighth_bits)
-{
-    //int32_t delta = 0;
-
-    eighth_bits[0] = theta * bpc->N;
-    eighth_bits[1] = theta * bpc->N;
-    /* Give more bits to low-energy MDCTs than they would otherwise deserve */
-    #if 0
-    if ((B0 > 1) && (itheta&0x3fff)) {
-        if (itheta > 8192) {
-            /* Rough approximation for pre-echo masking */
-            delta -= delta >> (4 - band_context->LM);
-        } else {
-            /* Corresponds to a forward-masking slope of 1.5 dB per 10 ms */
-            delta = IMIN(0, delta + (N<<BITRES>>(5-LM)));
-        }
-    }
-    bits[0] = IMAX(0, IMIN(b, (b-delta)/2));
-    #endif
-}
-
 /**
  * If a frame is transient, its band shapes will be broken up into 2^LM "short blocks".
  *
@@ -204,8 +183,8 @@ static int32_t decode_theta_uniform_pdf(const band_partition_context_t* bpc,
                                         range_decoder_t* rd)
 {
     int32_t theta_max_symbol = get_theta_range(bpc, bit_budget, rd);
-    int32_t theta_symbol = range_decoder_read_uniform_integer(rd, theta_max_symbol + 1);
-    return (theta_symbol * 16384) / theta_max_symbol;
+    int32_t itheta = range_decoder_read_uniform_integer(rd, theta_max_symbol + 1);
+    return (itheta * 16384) / theta_max_symbol;
 }
 
 static int32_t decode_theta_triangular_pdf(const band_partition_context_t* bpc,
@@ -222,7 +201,7 @@ static int32_t decode_theta_triangular_pdf(const band_partition_context_t* bpc,
 
     symbol_context_destroy(theta_symbol_context);
 
-    return itheta;
+    return (itheta * 16384) / theta_max_symbol;
 }
 
 /**
@@ -249,11 +228,77 @@ static int32_t decode_theta(const band_partition_context_t* bpc,
     return theta;
 }
 
-static void calculate_band_gains_from_theta(const band_partition_context_t* bpc __attribute__((unused)),
-                                            int32_t theta __attribute__((unused)),
-                                            float* gains __attribute__((unused)))
+/**
+ * This function calculates the relative gain of two adjacently coded band shapes from the theta
+ * parameter.
+ */
+static void calculate_band_gains_from_theta(const band_partition_context_t* bpc,
+                                            int32_t theta,
+                                            float gains[2])
 {
-    printf("calculate_band_gains_from_theta: UNIMPLEMENTED\n");
+    int igains[2] = {bitexact_cos((int16_t)theta), bitexact_cos((int16_t)(16384 - theta))};
+    gains[0] = (1.f / 32768) * igains[0];
+    gains[1] = (1.f / 32768) * igains[1];
+}
+
+/**
+ *
+ */
+static void calculate_bit_split_from_theta(const band_partition_context_t* bpc,
+                                           int32_t bit_budget,
+                                           int32_t theta,
+                                           int32_t eighth_bits[2])
+{
+    // delta is a parameter which determines the difference
+    int32_t delta;
+    if (theta == 0) {
+        delta = -16384;
+    } else if (theta == 16384) {
+        delta = 16384;
+    } else {
+        int igains[2] = {bitexact_cos((int16_t)theta), bitexact_cos((int16_t)(16384 - theta))};
+        delta = FRAC_MUL16((bpc->N - 1) << 7, bitexact_log2tan(igains[1], igains[0]));
+    }
+
+    // TODO: does this conditional correctly detect when to add pre/post masking adjustment?
+    if (band_partition_context_contains_multiple_frames(bpc)) {
+        // If the 2 sub-blocks belong to a transient frame and therefore correspond to different
+        // time ranges, one might temporally mask the other. For instance, if the sub-block that
+        // occurs first has a higher magnitude than the one that occurs second, it will temporally
+        // mask the second, quieter one; the human ear will be less sensitive to detail in the
+        // second block.
+        // Further adjustments are made to delta to account for temporal masking.
+        if (theta > 8192) {
+            // delta for the temp
+            delta -= delta >> (4 - bpc->LM);
+        } else {
+            // If the temporally later sub-block has lower magnitude, forward-masking will occur.
+            // we can
+            // TODO: is this value of N right, or should it be (N >> LM)?
+            //delta = delta + ((bpc->N << BITRES) >> (5 - bpc->LM));
+            delta = delta + (((bpc->N >> bpc->LM) << BITRES) >> (5 - bpc->LM));
+        }
+    }
+
+    printf("final delta value: %5i\n", delta);
+
+    eighth_bits[0] = restrict_to_range_int32((bit_budget - delta) / 2, 0, bit_budget);
+    eighth_bits[1] = bit_budget - eighth_bits[0];
+}
+
+/**
+ *
+ */
+static void rebalance_bits(int32_t eighth_bits[2],
+                           int32_t theta,
+                           const band_shape_t* newly_decoded_band)
+{
+    int32_t bits_unused_by_first_band = (eighth_bits[0] -
+                                         newly_decoded_band->expected_eighth_bit_consumption);
+
+    if ((bits_unused_by_first_band > (3 << BITRES)) && (theta != 0)) {
+        eighth_bits[1] += bits_unused_by_first_band - (3 << BITRES);
+    }
 }
 
 /**
@@ -285,29 +330,46 @@ band_shape_create_from_range_decoder_r(const band_partition_context_t* band_cont
         // Decode theta
         int32_t theta = decode_theta(subpartition_context, bit_budget, rd);
 
-        printf("decoded itheta: %3i\n", theta);
+        printf("decoded theta: %3i\n", theta);
         fflush(stdout);
 
         // Calculate bit allocations and relative gains according to theta
-        // Need total # of remaining bits less the bits taken by theta.
-        static float gains[2];
-        calculate_band_gains_from_theta(band_context, theta, gains);
+        static float mid_side_gains[2];
+        calculate_band_gains_from_theta(band_context, theta, mid_side_gains);
 
-        static int32_t eighth_bits[2];
-        calculate_bit_split_from_theta(band_context, theta, eighth_bits);
+        static int32_t mid_side_bit_allocations[2];
+        calculate_bit_split_from_theta(band_context, bit_budget, theta, mid_side_bit_allocations);
 
-        band_shape_t* lower = band_shape_create_from_range_decoder_r(subpartition_context,
-                                                                     eighth_bits[0],
-                                                                     rd);
-        //rebalance_bits(eighth_bits);
+        // We always decode the sub-block with more bits first.
+        bool swap_subblocks = (mid_side_bit_allocations[1] > mid_side_bit_allocations[0]);
+        if (swap_subblocks) {
+            int32_t t = mid_side_bit_allocations[1];
+            mid_side_bit_allocations[1] = mid_side_bit_allocations[0];
+            mid_side_bit_allocations[0] = t;
+        }
 
-        band_shape_t* upper = band_shape_create_from_range_decoder_r(subpartition_context,
-                                                                     eighth_bits[1],
-                                                                     rd);
-        //shape = merge_partitions(lower, upper);
+        band_shape_t* first_band;
+        band_shape_t* second_band;
+        first_band = band_shape_create_from_range_decoder_r(subpartition_context,
+                                                            mid_side_bit_allocations[0],
+                                                            rd);
+        rebalance_bits(mid_side_bit_allocations, theta, first_band);
 
-        band_shape_destroy(lower);
-        band_shape_destroy(upper);
+        second_band = band_shape_create_from_range_decoder_r(subpartition_context,
+                                                             mid_side_bit_allocations[1],
+                                                             rd);
+
+        if (swap_subblocks) {
+            band_shape_t* temp = first_band;
+            first_band = second_band;
+            second_band = temp;
+        }
+
+        //shape = merge_partitions(first_band, second_band);
+        shape = calloc(1, sizeof(band_shape_t));
+
+        band_shape_destroy(first_band);
+        band_shape_destroy(second_band);
     } else {
         const int32_t LM __attribute__((unused)) = band_context->LM;
 

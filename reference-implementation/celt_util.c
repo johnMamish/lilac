@@ -1,4 +1,5 @@
 #include "celt_util.h"
+#include "opus_celt_macros.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,4 +79,53 @@ void opus_raw_frame_destroy(opus_raw_frame_t* f)
 {
     if (f) free(f->data);
     free(f);
+}
+
+/**
+ * This code is not mine! It's taken directly from the Opus implementation.
+ *
+ * This is a cos() approximation designed to be bit-exact on any platform. Bit exactness
+ * with this approximation is important because it has an impact on the bit allocation
+ */
+int16_t bitexact_cos(int16_t x)
+{
+    if (x <= 0) {
+        return 32767;
+    } else if (x >= 16384) {
+        return 0;
+    } else {
+        int32_t tmp;
+        tmp = (4096 + ((int32_t)(x)*(x))) >> 13;
+
+        int16_t x2 = tmp;
+        x2 = (32767 - x2) + FRAC_MUL16(x2, (-7651 + FRAC_MUL16(x2, (8277 + FRAC_MUL16(-626, x2)))));
+        return 1 + x2;
+    }
+}
+
+/**
+ * This code is not mine! It's taken directly from the Opus implementation.
+ */
+int bitexact_log2tan(int isin, int icos)
+{
+    int lc;
+    int ls;
+    lc = EC_ILOG(icos);
+    ls = EC_ILOG(isin);
+    icos <<= (15 - lc);
+    isin <<= (15 - ls);
+    return (((ls - lc) * (1 << 11)) +
+            FRAC_MUL16(isin, FRAC_MUL16(isin, -2597) + 7932) -
+            FRAC_MUL16(icos, FRAC_MUL16(icos, -2597) + 7932));
+}
+
+int32_t restrict_to_range_int32(int32_t val, int32_t min, int32_t max)
+{
+    if (val > max) {
+        return max;
+    } else if (val < min) {
+        return min;
+    } else {
+        return val;
+    }
 }
