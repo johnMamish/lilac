@@ -7,6 +7,11 @@
  * The length of this struct is implicitly given by the frame_context_t that it's associated with.
  */
 typedef struct band_shape {
+    // TODO: should I add a pointer to a band_partition_context? maybe not; we're not guaranteed
+    // that it'll have the same lifetime. Also the band_partition_context struct is private to
+    // band_decoder.c
+    // band_partition_context_t*
+
     /// How many partitions this one band is split up into.
     /// The length of each partition can be implicitly dervied from the frame_context_t that this
     /// struct is associated with.

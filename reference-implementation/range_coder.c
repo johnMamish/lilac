@@ -1,3 +1,4 @@
+#include "opus_celt_macros.h"
 #include "range_coder.h"
 
 #include <assert.h>
@@ -5,6 +6,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
+
+/**
+ * Returns ceil(log2(x + 1)), so
+ *     ilog2_ceil(4) --> 3
+ *     ilog2_ceil(3) --> 2
+ *     ilog2_ceil(9) --> 4
+ */
+static int32_t ilog2_ceil(uint32_t x)
+{
+    return 31 - __builtin_clz(x);
+}
 
 /**
  * Returns true if range decoder rd needs to be renormalized as described in 4.1.2.1.
@@ -139,10 +152,34 @@ uint32_t range_decoder_read_raw_bytes_from_back(range_decoder_t* rd, int n)
 
 uint32_t range_decoder_read_uniform_integer(range_decoder_t* rd, uint32_t n)
 {
-    if (n > 255) {
-        printf("range_decoder_read_uniform_integer: unimplemented\n");
-        *((volatile int*)0) = 0xffeeffee;
-        return -1;
+    int32_t bits_to_decode = ilog2_ceil(n - 1);
+    if (bits_to_decode > 8) {
+        bits_to_decode -= 8;
+        int32_t truncated_n = ((n - 1) >> bits_to_decode) + 1;
+
+        // decode MSBs
+        uint32_t symbol_location = (rd->val / (rd->rng / truncated_n)) + 1;
+        uint32_t symbol;
+
+        if (symbol_location > truncated_n) {
+            symbol = 0;
+        } else {
+            symbol = n - symbol_location;
+        }
+
+        // Update the decoder
+        rd->val = rd->val - ((rd->rng / truncated_n) *  (truncated_n - (symbol + 1)));
+
+        if (symbol > 0) {
+            rd->rng = (rd->rng / truncated_n);
+        } else {
+            rd->rng = rd->rng - ((rd->rng / truncated_n) * (truncated_n - 1));
+        }
+
+        range_decoder_renormalize(rd);
+
+        uint32_t lsbs = range_decoder_read_raw_bytes_from_back(rd, bits_to_decode);
+        return (symbol << bits_to_decode) | lsbs;
     } else {
         // Decode the symbol
         uint32_t symbol_location = (rd->val / (rd->rng / n)) + 1;
@@ -178,17 +215,6 @@ void range_decoder_destroy(range_decoder_t* rd)
 void print_range_decoder_state(const range_decoder_t* rd)
 {
     printf("val: %08x    rng: %08x\n", rd->val, rd->rng);
-}
-
-/**
- * Returns ceil(log2(x + 1)), so
- *     ilog2_ceil(4) --> 3
- *     ilog2_ceil(3) --> 2
- *     ilog2_ceil(9) --> 4
- */
-static int32_t ilog2_ceil(uint32_t x)
-{
-    return 31 - __builtin_clz(x);
 }
 
 int32_t range_decoder_tell_bits(const range_decoder_t* rd)

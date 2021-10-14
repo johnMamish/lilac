@@ -35,6 +35,24 @@ typedef struct band_partition_context {
     int N;
 } band_partition_context_t;
 
+static char recursion_padding[65] = "";
+
+static void recursion_string_increase_depth(char* s)
+{
+    int len = strlen(s);
+    int i = 0;
+    for (i = 0; i < (len + 4); s[i++] = ' ');
+    s[i] = '\0';
+}
+
+
+static void recursion_string_decrease_depth(char* s)
+{
+    int len = strlen(s);
+    s[len - 4] = '\0';
+}
+
+
 /**
  * Might want to move this function and the corresponding struct to frame_context.h
  *
@@ -110,15 +128,35 @@ static bool band_needs_split(const band_partition_context_t* band_context,
 }
 
 /**
- *
+ * Returns a newly allocated band
  */
-#if 0
 static band_shape_t*
-merge_partitions()
+merge_partitions(band_shape_t* first, band_shape_t* second)
 {
-    return NULL;
+    band_shape_t* shape = calloc(1, sizeof(band_shape_t));
+
+    shape->n_partitions = first->n_partitions + second->n_partitions;
+    shape->collapse_mask = calloc(shape->n_partitions, sizeof(uint8_t));
+
+    int i;
+    shape->shape = calloc(shape->n_partitions, sizeof(float*));
+    for (i = 0; i < first->n_partitions; i++) {
+        // TODO actually copy shape.
+        shape->shape[i] = NULL;
+    }
+    for (; i < (first->n_partitions + second->n_partitions); i++) {
+        // TODO actually copy shape.
+        shape->shape[i] = NULL;
+    }
+
+    // TODO: figure out right value
+    shape->gain = 1;
+
+    shape->expected_eighth_bit_consumption = (first->expected_eighth_bit_consumption +
+                                              second->expected_eighth_bit_consumption);
+
+    return shape;
 }
-#endif
 
 /**
  * This function returns the maximum value that the symbol encoding theta can take on.
@@ -184,6 +222,7 @@ static int32_t decode_theta_uniform_pdf(const band_partition_context_t* bpc,
 {
     int32_t theta_max_symbol = get_theta_range(bpc, bit_budget, rd);
     int32_t itheta = range_decoder_read_uniform_integer(rd, theta_max_symbol + 1);
+    printf("%sdecoded itheta: %3i\n", recursion_padding, itheta);
     return (itheta * 16384) / theta_max_symbol;
 }
 
@@ -200,6 +239,8 @@ static int32_t decode_theta_triangular_pdf(const band_partition_context_t* bpc,
     uint32_t itheta = range_decoder_decode_symbol(rd, theta_symbol_context);
 
     symbol_context_destroy(theta_symbol_context);
+
+    printf("%sdecoded itheta: %3i\n", recursion_padding, itheta);
 
     return (itheta * 16384) / theta_max_symbol;
 }
@@ -218,7 +259,7 @@ static int32_t decode_theta(const band_partition_context_t* bpc,
 {
     int32_t theta;
     int32_t theta_max_symbol = get_theta_range(bpc, bit_budget, rd);
-    printf("theta qn: %5i\n", theta_max_symbol);
+    printf("%stheta qn: %5i\n", recursion_padding, theta_max_symbol);
 
     if (band_partition_context_contains_multiple_frames(bpc)) {
         theta = decode_theta_uniform_pdf(bpc, bit_budget, rd);
@@ -274,16 +315,16 @@ static void calculate_bit_split_from_theta(const band_partition_context_t* bpc,
         } else {
             // If the temporally later sub-block has lower magnitude, forward-masking will occur.
             // we can
-            // TODO: is this value of N right, or should it be (N >> LM)?
-            //delta = delta + ((bpc->N << BITRES) >> (5 - bpc->LM));
-            delta = delta + (((bpc->N >> bpc->LM) << BITRES) >> (5 - bpc->LM));
+            delta = delta + ((bpc->N << BITRES) >> (5 - bpc->LM));
         }
     }
 
-    printf("final delta value: %5i\n", delta);
-
     eighth_bits[0] = restrict_to_range_int32((bit_budget - delta) / 2, 0, bit_budget);
     eighth_bits[1] = bit_budget - eighth_bits[0];
+
+
+    printf("%sdelta: %5i, mbits: %3i, sbits: %3i\n",
+           recursion_padding, delta, eighth_bits[0], eighth_bits[1]);
 }
 
 /**
@@ -301,6 +342,86 @@ static void rebalance_bits(int32_t eighth_bits[2],
     }
 }
 
+static int get_pulses(int i)
+{
+    if (i < 8) {
+        return i;
+    } else {
+        return (8 + (i % 8)) << ((i / 8) - 1);
+    }
+}
+
+static int32_t calculate_eighth_bit_consumption_for_pvq_family(const pvq_family_t* f)
+{
+    uint64_t size = pvq_family_calculate_size(f);
+    float ebits = 8 * log2(size);
+    int32_t ebitsi = (int32_t)floor(ebits - 1e-6);
+
+    return ebitsi;
+}
+
+/**
+ * Determines the max number of pulses that can be encoded with a specific 1/8th-bit budget.
+ *
+ * TODO: right now this does a linear search involving a SUPER SUPER expensive calculation which
+ * can be done at compile time. Need to move that back to compile time.
+ *
+ */
+static pvq_family_t* determine_appropriate_pvq_family(const band_partition_context_t* bpc,
+                                                      int32_t bit_budget)
+{
+    pvq_family_t f = {.l = bpc->N, .k = 0};
+
+    int32_t highest_k = 0;
+
+    for (int i = 1; i < 41; i++) {
+        f.k = get_pulses(i);
+        //printf("calculate_k: evaluating PVQ family {.l = %i, .k = %i}\n", f.l, f.k);
+
+        int32_t ebitsi = calculate_eighth_bit_consumption_for_pvq_family(&f);
+
+        if ((ebitsi + 1) > bit_budget) {
+            break;
+        } else {
+            highest_k = f.k;
+        }
+    }
+
+    pvq_family_t* ret = calloc(1, sizeof(pvq_family_t));
+    ret->l = bpc->N;
+    ret->k = highest_k;
+    return ret;
+}
+
+static band_shape_t* decode_block_shape(const band_partition_context_t* bpc,
+                                        range_decoder_t* rd,
+                                        int32_t eighth_bit_budget)
+{
+    band_shape_t* shape = calloc(1, sizeof(band_shape_t));
+
+    shape->n_partitions = 1;
+    shape->collapse_mask = calloc(1, sizeof(uint8_t));
+    shape->shape = calloc(1, sizeof(float*));
+    shape->shape[0] = calloc(bpc->N, sizeof(float));
+    shape->gain = 1;
+
+    // Given our bit budget and vector length, what's the appropriate PVQ family to use?
+    // Throw an extra eighth bit in there for conservativeness?
+    pvq_family_t* pvq_family = determine_appropriate_pvq_family(bpc, eighth_bit_budget);
+    shape->expected_eighth_bit_consumption = calculate_eighth_bit_consumption_for_pvq_family(pvq_family) + 1;
+
+    printf("%sdecoding PVQ family: {.l = %3i, .k = %3i} from %5i eighth bits; budget %5i eighth bits\n",
+           recursion_padding,
+           pvq_family->l, pvq_family->k, shape->expected_eighth_bit_consumption, eighth_bit_budget);
+
+    uint32_t size = pvq_family_calculate_size(pvq_family);
+    range_decoder_read_uniform_integer(rd, size);
+
+    free(pvq_family);
+
+    return shape;
+}
+
 /**
  *
  *
@@ -315,12 +436,16 @@ band_shape_create_from_range_decoder_r(const band_partition_context_t* band_cont
                                        int32_t bit_budget,
                                        range_decoder_t* rd)
 {
+    recursion_string_increase_depth(recursion_padding);
+    printf("%sstart LM = %i, budget = %3i\n", recursion_padding, band_context->LM, bit_budget);
+
     band_shape_t* shape = NULL;
 
     //int32_t remaining_bits = total_bits - tell - 1;
     int32_t remaining_bits __attribute__((unused)) = range_decoder_get_remaining_eighth_bits(rd) - 1;
     int32_t range_coder_startpos __attribute__((unused)) = range_decoder_tell_bits_fractional(rd);
     if (band_needs_split(band_context, bit_budget)) {
+        // TODO: split this into a function
         band_partition_context_t* subpartition_context = calloc(1, sizeof(band_partition_context_t));
         subpartition_context->C  = band_context->C;
         subpartition_context->N  = band_context->N >> 1;
@@ -328,17 +453,20 @@ band_shape_create_from_range_decoder_r(const band_partition_context_t* band_cont
         subpartition_context->transient = band_context->transient;
 
         // Decode theta
+        int32_t tell = range_decoder_tell_bits_fractional(rd);
         int32_t theta = decode_theta(subpartition_context, bit_budget, rd);
+        int32_t ebits_used_by_theta = range_decoder_tell_bits_fractional(rd) - tell;
+        printf("%sqalloc = %3i\n", recursion_padding, ebits_used_by_theta);
+        bit_budget -= ebits_used_by_theta;
 
-        printf("decoded theta: %3i\n", theta);
         fflush(stdout);
 
         // Calculate bit allocations and relative gains according to theta
-        static float mid_side_gains[2];
-        calculate_band_gains_from_theta(band_context, theta, mid_side_gains);
+        float mid_side_gains[2];
+        calculate_band_gains_from_theta(subpartition_context, theta, mid_side_gains);
 
-        static int32_t mid_side_bit_allocations[2];
-        calculate_bit_split_from_theta(band_context, bit_budget, theta, mid_side_bit_allocations);
+        int32_t mid_side_bit_allocations[2];
+        calculate_bit_split_from_theta(subpartition_context, bit_budget, theta, mid_side_bit_allocations);
 
         // We always decode the sub-block with more bits first.
         bool swap_subblocks = (mid_side_bit_allocations[1] > mid_side_bit_allocations[0]);
@@ -365,25 +493,19 @@ band_shape_create_from_range_decoder_r(const band_partition_context_t* band_cont
             second_band = temp;
         }
 
-        //shape = merge_partitions(first_band, second_band);
-        shape = calloc(1, sizeof(band_shape_t));
+        shape = merge_partitions(first_band, second_band);
+
+        // HACK: should probably find a way to move this into merge_partitions()
+        shape->expected_eighth_bit_consumption += ebits_used_by_theta;
 
         band_shape_destroy(first_band);
         band_shape_destroy(second_band);
     } else {
-        const int32_t LM __attribute__((unused)) = band_context->LM;
-
-        band_shape_t* shape = calloc(1, sizeof(band_shape_t));
-        shape->n_partitions = 1;
-        shape->collapse_mask = calloc(1, sizeof(uint8_t));
-        shape->shape = calloc(1, sizeof(float*));
-        shape->shape[0] = calloc(band_context->N, sizeof(float));
-        shape->gain = 1;
-
-        //shape = decode_band_shape();
-
-        shape->expected_eighth_bit_consumption = 0;
+        shape = decode_block_shape(band_context, rd, bit_budget);
     }
+
+    printf("%send LM = %i\n", recursion_padding, band_context->LM);
+    recursion_string_decrease_depth(recursion_padding);
 
     return shape;
 }
